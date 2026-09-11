@@ -186,4 +186,97 @@ export class AuthController {
     }
     return res.status(200).json({ success: true, message: 'Logged out successfully' });
   }
+
+  /**
+   * POST /api/auth/bootstrap
+   * Idempotent endpoint for initial cloud setup.
+   * If zero users exist, creates the initial Admin & Staff accounts and master data.
+   */
+  static async bootstrap(_req: Request, res: Response) {
+    try {
+      const userCount = await prisma.user.count().catch(() => 0);
+      if (userCount > 0) {
+        return res.status(200).json({
+          status: 'ALREADY_INITIALIZED',
+          message: 'System already has active users.',
+          usersCount: userCount
+        });
+      }
+
+      const salt = await bcrypt.genSalt(10);
+      const hashPassword = async (pw: string) => bcrypt.hash(pw, salt);
+
+      const academicYear = await prisma.academicYear.upsert({
+        where: { yearName: '2025-2026' },
+        update: {},
+        create: { yearName: '2025-2026', isCurrent: true }
+      });
+
+      const deptCSE = await prisma.department.upsert({
+        where: { code: 'CSE' },
+        update: {},
+        create: { code: 'CSE', name: 'Computer Science & Engineering' }
+      });
+
+      await prisma.department.upsert({
+        where: { code: 'ECE' },
+        update: {},
+        create: { code: 'ECE', name: 'Electronics & Communication Engineering' }
+      });
+
+      await prisma.department.upsert({
+        where: { code: 'MECH' },
+        update: {},
+        create: { code: 'MECH', name: 'Mechanical Engineering' }
+      });
+
+      for (let y = 1; y <= 4; y++) {
+        const names = ['', 'First Year', 'Second Year', 'Third Year', 'Final Year'];
+        await prisma.year.upsert({
+          where: { yearNumber: y },
+          update: {},
+          create: { yearNumber: y, name: names[y] }
+        });
+      }
+
+      const adminPassword = await hashPassword('admin123');
+      const admin = await prisma.user.upsert({
+        where: { email: 'admin@college.edu' },
+        update: {},
+        create: {
+          name: 'Chief Administrator',
+          email: 'admin@college.edu',
+          passwordHash: adminPassword,
+          role: Role.ADMIN,
+          isActive: true
+        }
+      });
+
+      const staff1Password = await hashPassword('Sarah@15081988');
+      const staff1 = await prisma.user.upsert({
+        where: { email: 'sarah.cse@college.edu' },
+        update: {},
+        create: {
+          name: 'Prof. Sarah Jenkins',
+          email: 'sarah.cse@college.edu',
+          username: 'sarah.jenkins',
+          dateOfBirth: '1988-08-15',
+          passwordHash: staff1Password,
+          role: Role.STAFF,
+          departmentId: deptCSE.id,
+          passwordAuthorized: true,
+          passwordAuthorizedAt: new Date()
+        }
+      });
+
+      return res.status(201).json({
+        status: 'BOOTSTRAP_COMPLETE',
+        message: 'Master academic records, Admin account, and Staff account initialized.',
+        adminEmail: admin.email,
+        staffEmail: staff1.email
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
+  }
 }
