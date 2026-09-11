@@ -1,0 +1,501 @@
+// Prisma Schema for Role-Based Academic Performance and Parent Notification Platform
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// --------------------------------------------------------
+// USER ROLES & AUTHENTICATION
+// --------------------------------------------------------
+
+enum Role {
+  ADMIN
+  STAFF
+}
+
+model User {
+  id                   String    @id @default(uuid())
+  name                 String
+  email                String    @unique
+  username             String?   @unique
+  dateOfBirth          String?   // e.g. "1988-08-15"
+  passwordHash         String
+  role                 Role      @default(STAFF)
+  isActive             Boolean   @default(true)
+  passwordAuthorized   Boolean   @default(true)
+  passwordAuthorizedAt DateTime?
+  departmentId         String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  // Relationships
+  department          Department?            @relation("FacultyDepartment", fields: [departmentId], references: [id], onDelete: SetNull)
+  teacherAssignments TeacherAssignment[]
+  marksEntered       Mark[]                 @relation("MarkEnteredBy")
+  marksChanged       MarkChangeLog[]        @relation("MarkChangedBy")
+  auditLogs          AuditLog[]
+  noticesCreated     CollegeNotice[]        @relation("NoticeCreatedBy")
+  studentImports     StudentImportHistory[] @relation("UserStudentImports")
+
+  @@index([role, isActive])
+  @@index([name])
+  @@index([departmentId])
+}
+
+// --------------------------------------------------------
+// ACADEMIC HIERARCHY
+// --------------------------------------------------------
+
+model AcademicYear {
+  id        String   @id @default(uuid())
+  yearName  String   @unique // e.g. "2025-2026"
+  isCurrent Boolean  @default(false)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sections           Section[]
+  students           Student[]
+  teacherAssignments TeacherAssignment[]
+  collegeNotices     CollegeNotice[]
+  assessments        Assessment[]
+}
+
+model Department {
+  id        String   @id @default(uuid())
+  code      String   @unique // e.g. "CSE", "ECE", "MECH"
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  facultyMembers User[]          @relation("FacultyDepartment")
+  sections       Section[]
+  subjects       Subject[]
+  students       Student[]
+  collegeNotices CollegeNotice[]
+  assessments    Assessment[]
+}
+
+model Year {
+  id         String   @id @default(uuid())
+  yearNumber Int      @unique // 1, 2, 3, 4
+  name       String   // "First Year", "Second Year", etc.
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  sections       Section[]
+  subjects       Subject[]
+  students       Student[]
+  collegeNotices CollegeNotice[]
+  assessments    Assessment[]
+}
+
+model Section {
+  id             String   @id @default(uuid())
+  name           String   // "A", "B", "C"
+  departmentId   String
+  yearId         String
+  academicYearId String
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  department   Department   @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  year         Year         @relation(fields: [yearId], references: [id], onDelete: Cascade)
+  academicYear AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+
+  students           Student[]
+  teacherAssignments TeacherAssignment[]
+  collegeNotices     CollegeNotice[]
+
+  @@unique([name, departmentId, yearId, academicYearId])
+  @@index([departmentId, yearId, academicYearId])
+}
+
+model Subject {
+  id           String   @id @default(uuid())
+  code         String   @unique // e.g. "CS8501"
+  name         String
+  departmentId String
+  yearId       String
+  semester     Int
+  maximumMarks Float    @default(100.0)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  department Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  year       Year       @relation(fields: [yearId], references: [id], onDelete: Cascade)
+
+  teacherAssignments TeacherAssignment[]
+  marks              Mark[]
+  markChangeLogs     MarkChangeLog[]
+  assessments        Assessment[]
+
+  @@index([departmentId, yearId, semester])
+  @@index([isActive])
+}
+
+// --------------------------------------------------------
+// STUDENTS & PARENT CONTACT
+// --------------------------------------------------------
+
+enum StudentStatus {
+  ACTIVE
+  INACTIVE
+  DETAINED
+  ALUMNI
+}
+
+model Student {
+  id             String        @id @default(uuid())
+  registerNumber String
+  name           String
+  academicYearId String
+  departmentId   String
+  yearId         String
+  sectionId      String
+  parentName     String
+  parentMobile   String
+  status         StudentStatus @default(ACTIVE)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  academicYear AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  department   Department   @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  year         Year         @relation(fields: [yearId], references: [id], onDelete: Cascade)
+  section      Section      @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  marks                Mark[]
+  markChangeLogs       MarkChangeLog[]
+  performanceSnapshots PerformanceSnapshot[]
+  notifications        Notification[]
+
+  @@unique([registerNumber, academicYearId])
+  @@index([registerNumber])
+  @@index([academicYearId])
+  @@index([sectionId])
+  @@index([departmentId, yearId])
+  @@index([parentMobile])
+}
+
+// --------------------------------------------------------
+// STAFF ASSIGNMENT / CLASS ACCESS
+// --------------------------------------------------------
+
+model TeacherAssignment {
+  id             String   @id @default(uuid())
+  staffId        String
+  subjectId      String
+  sectionId      String
+  academicYearId String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  staff        User         @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  subject      Subject      @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  section      Section      @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  academicYear AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+
+  @@unique([subjectId, sectionId, academicYearId])
+  @@index([staffId])
+  @@index([sectionId])
+  @@index([subjectId])
+  @@index([academicYearId])
+}
+
+// --------------------------------------------------------
+// ASSESSMENTS & MARKS
+// --------------------------------------------------------
+
+model Assessment {
+  id             String   @id @default(uuid())
+  name           String   // e.g. "Internal Assessment 1", "IA-1"
+  code           String   @unique // e.g. "IA-1", "IA-2", "IA-3", "MODEL", "SEMESTER"
+  description    String?
+  maximumMarks   Float    @default(100.0)
+  weightage      Float?
+  isActive       Boolean  @default(true)
+  academicYearId String?
+  departmentId   String?
+  yearId         String?
+  semester       Int?
+  subjectId      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  academicYear AcademicYear? @relation(fields: [academicYearId], references: [id], onDelete: SetNull)
+  department   Department?   @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  year         Year?         @relation(fields: [yearId], references: [id], onDelete: SetNull)
+  subject      Subject?      @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+
+  marks                Mark[]
+  markChangeLogs       MarkChangeLog[]
+  performanceSnapshots PerformanceSnapshot[]
+
+  @@index([isActive])
+  @@index([departmentId, academicYearId])
+  @@index([academicYearId])
+  @@index([yearId])
+}
+
+model Mark {
+  id            String   @id @default(uuid())
+  studentId     String
+  subjectId     String
+  assessmentId  String
+  marksObtained Float
+  maximumMarks  Float    @default(100.0)
+  enteredBy     String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  student    Student    @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  subject    Subject    @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  assessment Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  author     User       @relation("MarkEnteredBy", fields: [enteredBy], references: [id], onDelete: Restrict)
+
+  changeLogs MarkChangeLog[]
+
+  @@unique([studentId, subjectId, assessmentId])
+  @@index([studentId])
+  @@index([assessmentId])
+  @@index([subjectId, assessmentId])
+  @@index([enteredBy])
+}
+
+// --------------------------------------------------------
+// MARK CHANGE HISTORY
+// --------------------------------------------------------
+
+model MarkChangeLog {
+  id            String   @id @default(uuid())
+  markId        String
+  studentId     String
+  subjectId     String
+  assessmentId  String
+  previousMarks Float
+  newMarks      Float
+  changedBy     String
+  reason        String?
+  createdAt     DateTime @default(now())
+
+  mark       Mark       @relation(fields: [markId], references: [id], onDelete: Cascade)
+  student    Student    @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  subject    Subject    @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  assessment Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  user       User       @relation("MarkChangedBy", fields: [changedBy], references: [id], onDelete: Restrict)
+
+  @@index([markId])
+  @@index([studentId])
+  @@index([changedBy])
+}
+
+// --------------------------------------------------------
+// PERFORMANCE SNAPSHOTS
+// --------------------------------------------------------
+
+model PerformanceSnapshot {
+  id                    String   @id @default(uuid())
+  studentId             String
+  assessmentId          String
+  total                 Float
+  maximumTotal          Float
+  percentage            Float
+  previousPercentage    Float?
+  improvementPercentage Float?
+  performanceStatus     String   // e.g. "EXCELLENT", "GOOD", "AVERAGE", "CRITICAL"
+  createdAt             DateTime @default(now())
+
+  student    Student    @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  assessment Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, assessmentId])
+  @@index([studentId])
+}
+
+// --------------------------------------------------------
+// NOTIFICATIONS (SMS & WHATSAPP)
+// --------------------------------------------------------
+
+enum NotificationType {
+  SMS
+  WHATSAPP
+}
+
+enum NotificationCategory {
+  PERFORMANCE
+  COLLEGE_NOTICE
+}
+
+enum NotificationStatus {
+  PENDING
+  PROCESSING
+  SENT
+  DELIVERED
+  FAILED
+}
+
+model Notification {
+  id                String               @id @default(uuid())
+  noticeId          String?
+  studentId         String?
+  parentMobile      String
+  type              NotificationType
+  category          NotificationCategory
+  title             String
+  message           String
+  status            NotificationStatus   @default(PENDING)
+  providerMessageId String?
+  retryCount        Int                  @default(0)
+  sentAt            DateTime?
+  deliveredAt       DateTime?
+  failedAt          DateTime?
+  errorMessage      String?
+  createdAt         DateTime             @default(now())
+
+  notice  CollegeNotice? @relation(fields: [noticeId], references: [id], onDelete: SetNull)
+  student Student?       @relation(fields: [studentId], references: [id], onDelete: SetNull)
+
+  @@index([noticeId])
+  @@index([parentMobile])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// --------------------------------------------------------
+// COLLEGE NOTICES & NEWS
+// --------------------------------------------------------
+
+enum NoticeType {
+  HOLIDAY
+  INTERNAL_EXAM
+  SEMESTER_EXAM
+  EXAM_TIMETABLE
+  COLLEGE_REOPENING
+  ACADEMIC
+  URGENT
+  GENERAL
+}
+
+enum NoticeTargetType {
+  ALL_COLLEGE
+  DEPARTMENT
+  YEAR
+  SECTION
+}
+
+enum NoticeStatus {
+  DRAFT
+  SCHEDULED
+  PUBLISHED
+  ARCHIVED
+  CANCELLED
+}
+
+model CollegeNotice {
+  id              String           @id @default(uuid())
+  title           String
+  content         String
+  noticeType      NoticeType
+  targetType      NoticeTargetType
+  academicYearId  String?
+  departmentId    String?
+  yearId          String?
+  sectionId       String?
+  startDate       DateTime?
+  endDate         DateTime?
+  scheduledAt     DateTime?
+  publishedAt     DateTime?
+  cancelledAt     DateTime?
+  deliveryChannel String           @default("BOTH") // "SMS", "WHATSAPP", "BOTH"
+  createdBy       String
+  status          NoticeStatus     @default(DRAFT)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  academicYear  AcademicYear?  @relation(fields: [academicYearId], references: [id], onDelete: SetNull)
+  department    Department?    @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  year          Year?          @relation(fields: [yearId], references: [id], onDelete: SetNull)
+  section       Section?       @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+  author        User           @relation("NoticeCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
+  notifications Notification[]
+
+  @@index([targetType, status])
+  @@index([createdBy])
+}
+
+// --------------------------------------------------------
+// AUDIT TRAIL LOGGING
+// --------------------------------------------------------
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String
+  action    String   // e.g. "CREATE", "UPDATE", "DELETE", "MARK_ENTRY"
+  entity    String   // e.g. "Mark", "Student", "TeacherAssignment", "User"
+  entityId  String
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId])
+  @@index([entity, entityId])
+  @@index([createdAt])
+}
+
+// --------------------------------------------------------
+// STUDENT BULK IMPORT AUDIT & HISTORY
+// --------------------------------------------------------
+
+enum ImportStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  COMPLETED_WITH_ERRORS
+  FAILED
+}
+
+enum DuplicateResolutionMode {
+  SKIP
+  UPDATE
+  STOP
+}
+
+model StudentImportHistory {
+  id               String                  @id @default(uuid())
+  fileName         String
+  fileSize         Int?
+  uploadedBy       String
+  academicYearId   String?
+  departmentId     String?
+  yearId           String?
+  sectionId        String?
+  totalRows        Int                     @default(0)
+  validRows        Int                     @default(0)
+  invalidRows      Int                     @default(0)
+  duplicateRows    Int                     @default(0)
+  importedRows     Int                     @default(0)
+  skippedRows      Int                     @default(0)
+  failedRows       Int                     @default(0)
+  status           ImportStatus            @default(PENDING)
+  duplicateMode    DuplicateResolutionMode @default(SKIP)
+  processingTimeMs Int?
+  errorLog         Json?
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+
+  uploader         User                    @relation("UserStudentImports", fields: [uploadedBy], references: [id], onDelete: Restrict)
+
+  @@index([uploadedBy])
+  @@index([status])
+  @@index([createdAt])
+}

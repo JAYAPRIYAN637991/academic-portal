@@ -1,0 +1,43 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-dark-950 text-slate-100 font-sans antialiased min-h-screen selection:bg-indigo-500/30 selection:text-indigo-200;
+  }
+
+  /* Custom scrollbar for data tables and panels */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: rgba(15, 23, 42, 0.6);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(100, 116, 139, 0.4);
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(148, 163, 184, 0.6);
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply bg-dark-900/90 backdrop-blur-md border border-slate-800/80 rounded-xl shadow-card-dark transition-all duration-200;
+  }
+  
+  .glass-panel {
+    @apply bg-dark-850/90 backdrop-blur-md border border-slate-800/60 rounded-lg;
+  }
+
+  .nav-item-active {
+    @apply bg-gradient-to-r from-indigo-600/20 to-indigo-600/5 text-indigo-300 border-l-4 border-indigo-500 font-semibold;
+  }
+
+  .nav-item-active-staff {
+    @apply bg-gradient-to-r from-emerald-600/20 to-emerald-600/5 text-emerald-300 border-l-4 border-emerald-500 font-semibold;
+  }
+}

@@ -1,0 +1,9 @@
+**/node_modules
+**/dist
+**/.git
+**/.env
+**/.gemini
+**/__pycache__
+**/*.log
+**/*.pyc
+**/academic_portal.db
