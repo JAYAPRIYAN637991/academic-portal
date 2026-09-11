@@ -2,6 +2,7 @@ import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
+import bcrypt from 'bcryptjs';
 import { config } from './config';
 import routes from './routes';
 import { prisma } from './db';
@@ -92,10 +93,90 @@ export function createApp() {
   return app;
 }
 
+async function autoSeedDatabaseIfEmpty() {
+  try {
+    const userCount = await prisma.user.count().catch(() => 0);
+    if (userCount === 0) {
+      console.log('🌱 Empty database detected on startup. Auto-seeding master data and accounts...');
+      const salt = await bcrypt.genSalt(10);
+      const hashPassword = async (pw: string) => bcrypt.hash(pw, salt);
+
+      const academicYear = await prisma.academicYear.upsert({
+        where: { yearName: '2025-2026' },
+        update: {},
+        create: { yearName: '2025-2026', isCurrent: true }
+      });
+
+      const deptCSE = await prisma.department.upsert({
+        where: { code: 'CSE' },
+        update: {},
+        create: { code: 'CSE', name: 'Computer Science & Engineering' }
+      });
+
+      await prisma.department.upsert({
+        where: { code: 'ECE' },
+        update: {},
+        create: { code: 'ECE', name: 'Electronics & Communication Engineering' }
+      });
+
+      await prisma.department.upsert({
+        where: { code: 'MECH' },
+        update: {},
+        create: { code: 'MECH', name: 'Mechanical Engineering' }
+      });
+
+      for (let y = 1; y <= 4; y++) {
+        const names = ['', 'First Year', 'Second Year', 'Third Year', 'Final Year'];
+        await prisma.year.upsert({
+          where: { yearNumber: y },
+          update: {},
+          create: { yearNumber: y, name: names[y] }
+        });
+      }
+
+      const adminPassword = await hashPassword('admin123');
+      await prisma.user.upsert({
+        where: { email: 'admin@college.edu' },
+        update: {},
+        create: {
+          name: 'Chief Administrator',
+          email: 'admin@college.edu',
+          passwordHash: adminPassword,
+          role: 'ADMIN',
+          isActive: true
+        }
+      });
+
+      const staff1Password = await hashPassword('Sarah@15081988');
+      await prisma.user.upsert({
+        where: { email: 'sarah.cse@college.edu' },
+        update: {},
+        create: {
+          name: 'Prof. Sarah Jenkins',
+          email: 'sarah.cse@college.edu',
+          username: 'sarah.jenkins',
+          dateOfBirth: '1988-08-15',
+          passwordHash: staff1Password,
+          role: 'STAFF',
+          departmentId: deptCSE.id,
+          passwordAuthorized: true,
+          passwordAuthorizedAt: new Date()
+        }
+      });
+
+      console.log('✓ Cloud auto-seeding completed: Admin & Staff credentials ready!');
+    }
+  } catch (err: any) {
+    console.warn('Auto-seed check notice:', err?.message || err);
+  }
+}
+
 export function startServer() {
   const app = createApp();
   const server = app.listen(config.port, () => {
     console.log(`🚀 Academic Portal Express Server running on http://127.0.0.1:${config.port}`);
+    // Auto-bootstrap master records if running on fresh cloud database
+    autoSeedDatabaseIfEmpty().catch(err => console.warn('Auto-seed background notice:', err?.message || err));
     // Initialize background notification processing queue
     NotificationQueue.init().catch((err: any) => {
       console.warn('Queue init warning:', err?.message || err);
