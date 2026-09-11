@@ -10,6 +10,8 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: NPM_FLAGS
+        value: "--include=dev"
       - key: JWT_SECRET
         generateValue: true
       - key: MOCK_NOTIFICATIONS
