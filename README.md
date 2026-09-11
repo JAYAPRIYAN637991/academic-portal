@@ -7,6 +7,7 @@
 [![Prisma](https://img.shields.io/badge/Prisma-ORM-2D3748.svg)](https://www.prisma.io/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind-CSS-38B2AC.svg)](https://tailwindcss.com/)
 [![Tests](https://img.shields.io/badge/System_Tests-51%2F51_Passed-brightgreen.svg)]()
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/JAYAPRIYAN637991/academic-portal)
 
 A comprehensive, enterprise-grade academic management, marks administration, performance analytics, and parent notification platform designed specifically for higher-education colleges and universities.
 
