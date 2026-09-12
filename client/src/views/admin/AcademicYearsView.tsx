@@ -29,8 +29,17 @@ export const AcademicYearsView: React.FC = () => {
     setIsLoading(true);
     try {
       const res: any = await api.get('/academic-years').catch(() => api.get('/admin/academic-years'));
-      const list = unpackList<AcademicYear>(res, 'academicYears');
-      setAcademicYears(list);
+      const list = unpackList<any>(res, 'academicYears');
+      setAcademicYears(list.map((y: any) => ({
+        ...y,
+        id: y.id,
+        name: y.name || y.yearName || '',
+        yearName: y.yearName || y.name || '',
+        is_current: y.is_current !== undefined ? y.is_current : (y.isCurrent ? 1 : 0),
+        isCurrent: y.isCurrent !== undefined ? y.isCurrent : !!y.is_current,
+        total_students: y.total_students ?? y._count?.students ?? 0,
+        total_sections: y.total_sections ?? y._count?.sections ?? 0,
+      })));
     } catch (err: any) {
       error('Failed to load', err.message);
     } finally {
@@ -47,7 +56,12 @@ export const AcademicYearsView: React.FC = () => {
     if (!newName.trim()) return;
     setIsSubmitting(true);
     try {
-      await api.post('/academic-years', { name: newName, is_current: isCurrent ? 1 : 0 });
+      await api.post('/academic-years', {
+        yearName: newName.trim(),
+        name: newName.trim(),
+        isCurrent: !!isCurrent,
+        is_current: isCurrent ? 1 : 0
+      });
       success('Success', `Academic year ${newName} created`);
       setIsAddModalOpen(false);
       setNewName('');
@@ -62,7 +76,12 @@ export const AcademicYearsView: React.FC = () => {
 
   const handleSetActive = async (year: AcademicYear) => {
     try {
-      await api.put(`/academic-years/${year.id}`, { name: year.name, is_current: 1 });
+      await api.put(`/academic-years/${year.id}`, {
+        yearName: year.name,
+        name: year.name,
+        isCurrent: true,
+        is_current: 1
+      });
       success('Updated', `${year.name} is now the active academic year.`);
       fetchYears();
     } catch (err: any) {

@@ -74,14 +74,16 @@ class AcademicStructureController {
     }
     static async createAcademicYear(req, res) {
         try {
-            const { yearName, isCurrent = false, isActive = true } = req.body || {};
-            if (!yearName || typeof yearName !== 'string' || !yearName.trim()) {
+            const rawName = req.body?.yearName || req.body?.name || req.body?.year_name;
+            const isCurrent = req.body?.isCurrent ?? (req.body?.is_current !== undefined ? !!req.body.is_current : false);
+            const isActive = req.body?.isActive ?? (req.body?.is_active !== undefined ? !!req.body.is_active : true);
+            if (!rawName || typeof rawName !== 'string' || !rawName.trim()) {
                 return res.status(400).json({
                     error: 'Academic Year name is required (e.g., "2026-2027").',
                     code: 'YEAR_NAME_REQUIRED'
                 });
             }
-            const trimmedName = yearName.trim();
+            const trimmedName = rawName.trim();
             const existing = await db_1.prisma.academicYear.findUnique({
                 where: { yearName: trimmedName }
             });
@@ -117,7 +119,11 @@ class AcademicStructureController {
             }
             return res.status(201).json({
                 message: 'Academic Year created successfully',
-                academicYear: created
+                academicYear: {
+                    ...created,
+                    name: created.yearName,
+                    is_current: created.isCurrent ? 1 : 0
+                }
             });
         }
         catch (error) {
@@ -128,34 +134,36 @@ class AcademicStructureController {
     static async updateAcademicYear(req, res) {
         try {
             const { id } = req.params;
-            const { yearName, isCurrent, isActive } = req.body || {};
+            const rawName = req.body?.yearName || req.body?.name || req.body?.year_name;
+            const isCurrent = req.body?.isCurrent ?? (req.body?.is_current !== undefined ? !!req.body.is_current : undefined);
+            const isActive = req.body?.isActive ?? (req.body?.is_active !== undefined ? !!req.body.is_active : undefined);
             const existing = await db_1.prisma.academicYear.findUnique({ where: { id } });
             if (!existing) {
                 return res.status(404).json({ error: 'Academic Year not found', code: 'NOT_FOUND' });
             }
-            if (yearName && yearName.trim() !== existing.yearName) {
+            const trimmedName = rawName && typeof rawName === 'string' ? rawName.trim() : existing.yearName;
+            if (trimmedName !== existing.yearName) {
                 const nameDuplicate = await db_1.prisma.academicYear.findUnique({
-                    where: { yearName: yearName.trim() }
+                    where: { yearName: trimmedName }
                 });
                 if (nameDuplicate) {
                     return res.status(409).json({
-                        error: `Academic year "${yearName.trim()}" already exists.`,
+                        error: `Academic year "${trimmedName}" already exists.`,
                         code: 'ACADEMIC_YEAR_EXISTS'
                     });
                 }
             }
             if (isCurrent === true) {
                 await db_1.prisma.academicYear.updateMany({
-                    where: { id: { not: id } },
                     data: { isCurrent: false }
                 });
             }
             const updated = await db_1.prisma.academicYear.update({
                 where: { id },
                 data: {
-                    ...(yearName ? { yearName: yearName.trim() } : {}),
-                    ...(isCurrent !== undefined ? { isCurrent: !!isCurrent } : {}),
-                    ...(isActive !== undefined ? { isActive: !!isActive } : {})
+                    yearName: trimmedName,
+                    ...(isCurrent !== undefined ? { isCurrent } : {}),
+                    ...(isActive !== undefined ? { isActive } : {})
                 }
             });
             if (req.user) {
@@ -171,7 +179,11 @@ class AcademicStructureController {
             }
             return res.status(200).json({
                 message: 'Academic Year updated successfully',
-                academicYear: updated
+                academicYear: {
+                    ...updated,
+                    name: updated.yearName,
+                    is_current: updated.isCurrent ? 1 : 0
+                }
             });
         }
         catch (error) {
