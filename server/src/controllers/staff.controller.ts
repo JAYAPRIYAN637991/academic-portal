@@ -41,12 +41,21 @@ export class StaffController {
           });
           return {
             ...a,
-            studentCount
+            id: a.id,
+            sectionId: a.sectionId,
+            section: a.section.name,
+            department: a.section.department?.code || 'CSE',
+            department_name: a.section.department?.name || 'Department',
+            year: a.section.year?.yearNumber ?? 1,
+            yearName: a.section.year?.name || 'First Year',
+            yearNumber: a.section.year?.yearNumber ?? 1,
+            studentCount,
+            student_count: studentCount
           };
         })
       );
 
-      return res.status(200).json({ assignedClasses: enriched });
+      return res.status(200).json({ assignedClasses: enriched, classes: enriched });
     } catch (error) {
       console.error('Get assigned classes error:', error);
       return res.status(500).json({ error: 'Failed to fetch assigned classes' });

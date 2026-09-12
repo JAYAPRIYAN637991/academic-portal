@@ -111,10 +111,10 @@ export const MyClassesView: React.FC = () => {
             </div>
 
             <h3 className="font-bold text-lg text-white mb-0.5">
-              {cls.department} - Year {cls.year}
+              {cls.department} - Year {typeof cls.year === 'object' ? ((cls.year as any)?.yearNumber || 1) : cls.year}
             </h3>
             <div className="text-xs text-slate-300 font-medium mb-4">
-              Section {cls.section} &bull; Academic Term 2026-2027
+              Section {typeof cls.section === 'object' ? ((cls.section as any)?.name || 'A') : cls.section} &bull; Academic Term 2026-2027
             </div>
 
             <div className="flex items-center justify-between pt-3 border-t border-slate-800/80 text-xs">

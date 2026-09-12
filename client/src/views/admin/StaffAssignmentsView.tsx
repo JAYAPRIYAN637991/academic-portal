@@ -71,7 +71,7 @@ export const StaffAssignmentsView: React.FC = () => {
       ]);
 
       // Unpack response data safely
-      const parsedAssignments = Array.isArray(assignRes)
+      const rawAssignments = Array.isArray(assignRes)
         ? assignRes
         : (assignRes?.assignments || []);
       const parsedStaff = Array.isArray(staffRes)
@@ -86,6 +86,39 @@ export const StaffAssignmentsView: React.FC = () => {
       const parsedDepts = Array.isArray(deptRes)
         ? deptRes
         : (deptRes?.departments || []);
+
+      // Normalize assignments to guarantee all renderable fields are primitives
+      const parsedAssignments = rawAssignments.map((a: any) => {
+        let yr = 1;
+        if (typeof a.year === 'number') yr = a.year;
+        else if (typeof a.year === 'object' && a.year !== null) yr = a.year.yearNumber || a.year.year || 1;
+        else if (typeof a.yearNumber === 'number') yr = a.yearNumber;
+        else if (a.section?.year) {
+          const sy = a.section.year;
+          yr = typeof sy === 'object' ? (sy.yearNumber || sy.year || 1) : (Number(sy) || 1);
+        } else if (typeof a.year === 'string') {
+          yr = parseInt(a.year, 10) || 1;
+        }
+
+        let secName = 'A';
+        if (typeof a.section === 'string') secName = a.section;
+        else if (typeof a.section === 'object' && a.section !== null) secName = a.section.name || a.section.section || 'A';
+        else if (a.sectionName) secName = a.sectionName;
+
+        return {
+          ...a,
+          year: yr,
+          yearNumber: yr,
+          sectionName: secName,
+          staffName: String(a.staffName || a.staff?.name || a.staff_name || 'Faculty'),
+          staffEmail: String(a.staffEmail || a.staff?.email || 'staff@college.edu'),
+          departmentCode: String(typeof a.department === 'string' ? a.department : (a.departmentCode || a.department?.code || a.departmentName || 'CSE')),
+          departmentName: String(a.departmentName || (a.department as any)?.name || a.departmentCode || 'CSE'),
+          subjectCode: String(a.subjectCode || a.subject?.code || a.subject_code || 'CODE'),
+          subjectName: String(a.subjectName || a.subject?.name || a.subject_name || 'Course Name'),
+          studentCount: typeof a.studentCount === 'number' ? a.studentCount : 0
+        };
+      });
 
       setAssignments(parsedAssignments);
       setStaffList(parsedStaff);
@@ -295,8 +328,8 @@ export const StaffAssignmentsView: React.FC = () => {
     {
       header: 'Faculty Member',
       accessor: (row) => {
-        const name = row.staffName || row.staff_name || 'Faculty';
-        const email = row.staffEmail || `staff@college.edu`;
+        const name = String(row.staffName || (row.staff as any)?.name || row.staff_name || 'Faculty');
+        const email = String(row.staffEmail || (row.staff as any)?.email || `staff@college.edu`);
         return (
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500/20 to-purple-600/20 border border-indigo-500/30 text-indigo-300 font-bold text-sm flex items-center justify-center shrink-0">
@@ -313,10 +346,12 @@ export const StaffAssignmentsView: React.FC = () => {
     {
       header: 'Department',
       accessor: (row) => {
-        const dept = row.departmentCode || row.departmentName || row.department_name || 'CSE';
+        const dept = typeof row.department === 'string'
+          ? row.department
+          : (row.departmentCode || (row.department as any)?.code || row.departmentName || (row.department as any)?.name || 'CSE');
         return (
           <Badge variant="neutral" className="font-semibold uppercase tracking-wider">
-            {dept}
+            {String(dept)}
           </Badge>
         );
       },
@@ -324,7 +359,8 @@ export const StaffAssignmentsView: React.FC = () => {
     {
       header: 'Semester',
       accessor: (row) => {
-        const sem = row.semester || (row.subject as any)?.semester || 5;
+        const rawSem = row.semester ?? (row.subject as any)?.semester ?? 5;
+        const sem = typeof rawSem === 'object' ? ((rawSem as any)?.number || 5) : Number(rawSem);
         const isEven = sem % 2 === 0;
         return (
           <div className="flex items-center gap-1.5">
@@ -344,8 +380,8 @@ export const StaffAssignmentsView: React.FC = () => {
     {
       header: 'Subject & Subject Code',
       accessor: (row) => {
-        const code = row.subjectCode || row.subject_code || (row.subject as any)?.code || 'CODE';
-        const name = row.subjectName || row.subject_name || (row.subject as any)?.name || 'Course Name';
+        const code = String(row.subjectCode || (row.subject as any)?.code || row.subject_code || 'CODE');
+        const name = String(row.subjectName || (row.subject as any)?.name || row.subject_name || 'Course Name');
         return (
           <div className="space-y-0.5">
             <div className="flex items-center gap-2">
@@ -361,11 +397,35 @@ export const StaffAssignmentsView: React.FC = () => {
     {
       header: 'Class Section',
       accessor: (row) => {
-        const secName = row.sectionName || (row.section as any)?.name || row.section || 'A';
-        const yr = row.year || (row.section as any)?.year?.yearNumber || 3;
+        let secName = 'A';
+        if (typeof row.section === 'object' && row.section !== null) {
+          secName = (row.section as any).name || (row.section as any).section || 'A';
+        } else if (typeof row.sectionName === 'string') {
+          secName = row.sectionName;
+        } else if (typeof row.section === 'string') {
+          secName = row.section;
+        }
+
+        let yr: any = 1;
+        if (typeof row.year === 'number') {
+          yr = row.year;
+        } else if (typeof row.year === 'object' && row.year !== null) {
+          yr = (row.year as any).yearNumber || (row.year as any).year || 1;
+        } else if (typeof (row as any).yearNumber === 'number') {
+          yr = (row as any).yearNumber;
+        } else if ((row.section as any)?.year) {
+          const sy = (row.section as any).year;
+          yr = typeof sy === 'object' ? (sy.yearNumber || sy.year || 1) : (Number(sy) || 1);
+        } else if (typeof row.year === 'string') {
+          yr = parseInt(row.year, 10) || 1;
+        }
+
+        const secStr = String(secName);
+        const formattedSec = secStr.startsWith('Section') ? secStr : `Sec ${secStr}`;
+
         return (
           <Badge variant="primary" className="text-xs">
-            Year {yr} - Sec {secName}
+            Year {String(yr)} - {formattedSec}
           </Badge>
         );
       },
@@ -375,7 +435,7 @@ export const StaffAssignmentsView: React.FC = () => {
       accessor: (row) => (
         <span className="text-xs font-semibold text-slate-300 flex items-center gap-1">
           <Users className="w-3.5 h-3.5 text-slate-400" />
-          {row.studentCount || 0}
+          {typeof row.studentCount === 'number' ? row.studentCount : 0}
         </span>
       ),
     },
@@ -445,7 +505,7 @@ export const StaffAssignmentsView: React.FC = () => {
             <UserCheck className="w-4 h-4 text-emerald-400" />
           </div>
           <p className="text-2xl font-bold text-emerald-300 mt-1">
-            {new Set(assignments.map((a) => a.staffId || a.staff_id)).size}
+            {new Set(assignments.map((a) => a.staffId || (a as any).staff?.id || (a as any).staff_id || a.id)).size}
           </p>
           <span className="text-[11px] text-slate-400">Active instructors</span>
         </div>
@@ -648,17 +708,27 @@ export const StaffAssignmentsView: React.FC = () => {
               className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:border-indigo-500"
             >
               {availableSectionsForAssign.length > 0 ? (
-                availableSectionsForAssign.map((sc) => (
-                  <option key={sc.id} value={sc.id}>
-                    {(sc as any).department?.code || sc.department_code || 'Dept'} - Year {sc.year || (sc as any).year?.yearNumber || 3} Section {sc.name || sc.section}
-                  </option>
-                ))
+                availableSectionsForAssign.map((sc) => {
+                  const dept = (sc as any).department?.code || sc.department_code || 'Dept';
+                  const yr = typeof sc.year === 'object' ? ((sc as any).year?.yearNumber || 1) : (sc.year || 1);
+                  const sec = (sc as any).name || (sc as any).section || 'A';
+                  return (
+                    <option key={sc.id} value={sc.id}>
+                      {dept} - Year {yr} Section {sec}
+                    </option>
+                  );
+                })
               ) : (
-                sections.map((sc) => (
-                  <option key={sc.id} value={sc.id}>
-                    {(sc as any).department?.code || sc.department_code || 'Dept'} - Year {sc.year || (sc as any).year?.yearNumber || 3} Section {sc.name || sc.section}
-                  </option>
-                ))
+                sections.map((sc) => {
+                  const dept = (sc as any).department?.code || sc.department_code || 'Dept';
+                  const yr = typeof sc.year === 'object' ? ((sc as any).year?.yearNumber || 1) : (sc.year || 1);
+                  const sec = (sc as any).name || (sc as any).section || 'A';
+                  return (
+                    <option key={sc.id} value={sc.id}>
+                      {dept} - Year {yr} Section {sec}
+                    </option>
+                  );
+                })
               )}
             </select>
           </div>

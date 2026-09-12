@@ -18,6 +18,7 @@ router.use(authenticateUser);
 router.use(requireStaff);
 
 router.get('/assigned-classes', StaffController.getAssignedClasses);
+router.get('/classes', StaffController.getAssignedClasses);
 router.get('/dashboard-summary', StaffController.getDashboardSummary);
 router.get('/marks', StaffController.getMarksForClass);
 router.post('/marks', StaffController.enterMarks);
