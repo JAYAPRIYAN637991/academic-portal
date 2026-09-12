@@ -42,18 +42,28 @@ export const YearsSectionsView: React.FC = () => {
         api.get('/academic-years').catch(() => api.get('/admin/academic-years')),
       ]);
 
-      const sectionsList = unpackList<YearSection>(secRes, 'sections');
-      const departmentsList = unpackList<Department>(deptRes, 'departments');
-      const academicYearsList = unpackList<AcademicYear>(yearRes, 'academicYears');
+      const sectionsList = unpackList<any>(secRes, 'sections');
+      const departmentsList = unpackList<any>(deptRes, 'departments');
+      const rawYearList = unpackList<any>(yearRes, 'academicYears');
+      const academicYearsList = rawYearList.map((y: any) => ({
+        ...y,
+        id: y.id,
+        name: y.yearName || y.name || y.year || 'Academic Term',
+        yearName: y.yearName || y.name || y.year || '',
+        is_current: y.is_current !== undefined ? y.is_current : (y.isCurrent ? 1 : 0),
+        isCurrent: y.isCurrent !== undefined ? !!y.isCurrent : !!y.is_current,
+      }));
 
       setSections(sectionsList);
       setDepartments(departmentsList);
       setAcademicYears(academicYearsList);
 
-      if (departmentsList.length > 0 && !selectedDeptId) setSelectedDeptId(departmentsList[0].id);
+      if (departmentsList.length > 0 && !selectedDeptId) {
+        setSelectedDeptId(departmentsList[0].id);
+      }
       if (academicYearsList.length > 0 && !selectedYearId) {
         const current = academicYearsList.find((y: any) => y.isCurrent || y.is_current) || academicYearsList[0];
-        setSelectedYearId(current.id);
+        if (current) setSelectedYearId(current.id);
       }
     } catch (err: any) {
       error('Failed to load data', err.message);
@@ -66,18 +76,48 @@ export const YearsSectionsView: React.FC = () => {
     fetchData();
   }, []);
 
+  useEffect(() => {
+    if (departments.length > 0 && !selectedDeptId) {
+      setSelectedDeptId(departments[0].id);
+    }
+  }, [departments, selectedDeptId]);
+
+  useEffect(() => {
+    if (academicYears.length > 0 && !selectedYearId) {
+      const current = academicYears.find((y: any) => y.isCurrent || y.is_current) || academicYears[0];
+      if (current) setSelectedYearId(current.id);
+    }
+  }, [academicYears, selectedYearId]);
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!selectedDeptId) {
+      error('Selection Required', 'Please select a department.');
+      return;
+    }
+    if (!selectedYearId) {
+      error('Selection Required', 'Please select an academic term.');
+      return;
+    }
     setIsSubmitting(true);
     try {
+      const sectionName = sectionLetter.toUpperCase().startsWith('SECTION')
+        ? sectionLetter.toUpperCase()
+        : `Section ${sectionLetter.toUpperCase()}`;
+
       await api.post('/sections', {
-        academic_year_id: selectedYearId,
-        department_id: selectedDeptId,
-        year: yearNum,
+        name: sectionName,
         section: sectionLetter.toUpperCase(),
+        department_id: selectedDeptId,
+        departmentId: selectedDeptId,
+        year: yearNum,
+        yearNumber: yearNum,
+        academic_year_id: selectedYearId,
+        academicYearId: selectedYearId,
       });
-      success('Created', `Section Year ${yearNum} - ${sectionLetter.toUpperCase()} added.`);
+      success('Created', `${sectionName} added for Year ${yearNum}.`);
       setIsModalOpen(false);
+      setSectionLetter('A');
       fetchData();
     } catch (err: any) {
       error('Creation Failed', err.message);
@@ -98,43 +138,56 @@ export const YearsSectionsView: React.FC = () => {
     }
   };
 
-  const filtered = sections.filter((s) => {
+  const filtered = sections.filter((s: any) => {
+    const deptName = s.department?.name || s.department_name || '';
+    const deptCode = s.department?.code || s.department_code || '';
+    const secName = s.name || s.section || '';
+    const deptId = String(s.departmentId || s.department_id || s.department?.id || '');
+
     const matchesSearch =
-      (s.department_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (s.department_code || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.section.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesDept = filterDept === 'ALL' || String(s.department_id) === filterDept;
+      deptName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      deptCode.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      secName.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesDept = filterDept === 'ALL' || deptId === filterDept;
     return matchesSearch && matchesDept;
   });
 
-  const columns: Column<YearSection>[] = [
+  const columns: Column<any>[] = [
     {
       header: 'Department',
-      accessor: (row) => (
+      accessor: (row: any) => (
         <div>
-          <span className="font-semibold text-white">{row.department_name || row.department_code}</span>
-          {row.department_code && <span className="text-xs text-slate-400 block">{row.department_code}</span>}
+          <span className="font-semibold text-white">
+            {row.department?.name || row.department_name || row.department?.code || row.department_code}
+          </span>
+          {(row.department?.code || row.department_code) && (
+            <span className="text-xs text-slate-400 block">{row.department?.code || row.department_code}</span>
+          )}
         </div>
       ),
     },
     {
       header: 'Class & Section',
-      accessor: (row) => (
+      accessor: (row: any) => (
         <Badge variant="primary" size="md">
-          Year {row.year} - Section {row.section}
+          Year {row.year?.yearNumber || row.year || row.yearNumber} - {row.name || (row.section ? `Section ${row.section}` : '')}
         </Badge>
       ),
     },
     {
       header: 'Academic Term',
-      accessor: (row) => <span className="text-slate-300">{row.academic_year_name || '2026-2027'}</span>,
+      accessor: (row: any) => (
+        <span className="text-slate-300">
+          {row.academicYear?.yearName || row.academic_year_name || row.academicYearName || '2026-2027'}
+        </span>
+      ),
     },
     {
       header: 'Enrolled Students',
-      accessor: (row) => (
+      accessor: (row: any) => (
         <div className="flex items-center gap-1.5 text-xs text-slate-300">
           <Users className="w-3.5 h-3.5 text-indigo-400" />
-          <span>{row.student_count || 60} Students</span>
+          <span>{row._count?.students ?? row.student_count ?? 0} Students</span>
         </div>
       ),
     },
@@ -142,7 +195,7 @@ export const YearsSectionsView: React.FC = () => {
       header: 'Actions',
       className: 'text-right',
       headerClassName: 'text-right',
-      accessor: (row) => (
+      accessor: (row: any) => (
         <button
           onClick={() => setSectionToDelete(row)}
           className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-950/40"
@@ -184,7 +237,7 @@ export const YearsSectionsView: React.FC = () => {
             className="px-3 py-2 bg-slate-900 border border-slate-700/80 rounded-lg text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
           >
             <option value="ALL">All Departments</option>
-            {departments.map((d) => (
+            {departments.map((d: any) => (
               <option key={d.id} value={d.id}>
                 {d.code} - {d.name}
               </option>
@@ -222,11 +275,15 @@ export const YearsSectionsView: React.FC = () => {
               className="w-full px-3.5 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:border-indigo-500"
               required
             >
-              {departments.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.code} - {d.name}
-                </option>
-              ))}
+              {departments.length === 0 ? (
+                <option value="">No Departments Available</option>
+              ) : (
+                departments.map((d: any) => (
+                  <option key={d.id} value={d.id}>
+                    {d.code} - {d.name}
+                  </option>
+                ))
+              )}
             </select>
           </div>
 
@@ -270,12 +327,17 @@ export const YearsSectionsView: React.FC = () => {
               value={selectedYearId}
               onChange={(e) => setSelectedYearId(e.target.value)}
               className="w-full px-3.5 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:border-indigo-500"
+              required
             >
-              {academicYears.map((y) => (
-                <option key={y.id} value={y.id}>
-                  {y.name} {y.is_current ? '(Current)' : ''}
-                </option>
-              ))}
+              {academicYears.length === 0 ? (
+                <option value="">No Academic Terms Available</option>
+              ) : (
+                academicYears.map((y: any) => (
+                  <option key={y.id} value={y.id}>
+                    {y.yearName || y.name || y.year} {(y.isCurrent || y.is_current) ? '(Current Active Year)' : ''}
+                  </option>
+                ))
+              )}
             </select>
           </div>
 

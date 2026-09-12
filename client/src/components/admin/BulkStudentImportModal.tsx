@@ -344,9 +344,9 @@ export const BulkStudentImportModal: React.FC<BulkStudentImportModalProps> = ({
                   onChange={(e) => setSelectedAcademicYearId(e.target.value)}
                   className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:border-indigo-500"
                 >
-                  {academicYears.map((ay) => (
+                  {academicYears.map((ay: any) => (
                     <option key={ay.id} value={ay.id}>
-                      {ay.year} {ay.isCurrent ? '(Current Active Year)' : ''}
+                      {ay.yearName || ay.year || ay.name || 'Academic Term'} {(ay.isCurrent || ay.is_current) ? '(Current Active Year)' : ''}
                     </option>
                   ))}
                 </select>

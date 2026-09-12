@@ -65,7 +65,16 @@ class AcademicStructureController {
                 },
                 orderBy: [{ isCurrent: 'desc' }, { yearName: 'desc' }]
             });
-            return res.status(200).json({ academicYears });
+            const formattedYears = academicYears.map(ay => ({
+                ...ay,
+                name: ay.yearName,
+                year: ay.yearName,
+                yearName: ay.yearName,
+                year_name: ay.yearName,
+                is_current: ay.isCurrent ? 1 : 0,
+                isCurrent: ay.isCurrent
+            }));
+            return res.status(200).json({ academicYears: formattedYears, data: formattedYears, total: formattedYears.length });
         }
         catch (error) {
             console.error('Get academic years error:', error);
@@ -733,7 +742,18 @@ class AcademicStructureController {
                     { name: 'asc' }
                 ]
             });
-            return res.status(200).json({ sections });
+            const formattedSections = sections.map(s => ({
+                ...s,
+                department_name: s.department?.name,
+                department_code: s.department?.code,
+                academic_year_name: s.academicYear?.yearName,
+                academicYearName: s.academicYear?.yearName,
+                year: s.year?.yearNumber,
+                yearNumber: s.year?.yearNumber,
+                section: s.name.replace(/^Section\s*/i, ''),
+                student_count: s._count?.students ?? 0
+            }));
+            return res.status(200).json({ sections: formattedSections, data: formattedSections, total: formattedSections.length });
         }
         catch (error) {
             console.error('Get sections error:', error);
@@ -742,7 +762,44 @@ class AcademicStructureController {
     }
     static async createSection(req, res) {
         try {
-            const { name, departmentId, yearId, academicYearId, isActive = true } = req.body || {};
+            let { name, departmentId, yearId, academicYearId, isActive = true, year, section, academic_year_id, department_id } = req.body || {};
+            departmentId = departmentId || department_id;
+            academicYearId = academicYearId || academic_year_id;
+            // Auto-resolve academicYearId if not supplied
+            if (!academicYearId) {
+                const activeAy = await db_1.prisma.academicYear.findFirst({
+                    where: { isCurrent: true }
+                }) || await db_1.prisma.academicYear.findFirst({
+                    orderBy: { createdAt: 'desc' }
+                });
+                if (activeAy)
+                    academicYearId = activeAy.id;
+            }
+            // Auto-resolve yearId if yearNumber (1, 2, 3, 4) was provided
+            if (!yearId && (year !== undefined && year !== null)) {
+                const yrNum = Number(year);
+                const yrRecord = await db_1.prisma.year.findFirst({
+                    where: { yearNumber: yrNum }
+                });
+                if (yrRecord)
+                    yearId = yrRecord.id;
+            }
+            else if (yearId && (typeof yearId === 'number' || (typeof yearId === 'string' && /^[1-4]$/.test(yearId)))) {
+                const yrRecord = await db_1.prisma.year.findFirst({
+                    where: { yearNumber: Number(yearId) }
+                });
+                if (yrRecord)
+                    yearId = yrRecord.id;
+            }
+            // Auto-format section name (e.g. "A" -> "Section A")
+            if (!name && section) {
+                const cleanLetter = String(section).trim().toUpperCase();
+                name = cleanLetter.startsWith('SECTION') ? cleanLetter : `Section ${cleanLetter}`;
+            }
+            else if (name) {
+                const clean = String(name).trim();
+                name = clean.toUpperCase().startsWith('SECTION') ? clean : (clean.length <= 2 ? `Section ${clean.toUpperCase()}` : clean);
+            }
             if (!name || !departmentId || !yearId || !academicYearId) {
                 return res.status(400).json({
                     error: 'Section name (e.g. "Section A"), Department, Year, and Academic Year are all required.',
