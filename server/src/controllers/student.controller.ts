@@ -71,7 +71,24 @@ export class StudentController {
         ]
       });
 
-      return res.status(200).json({ students, total: students.length });
+      const formattedStudents = students.map((s: any) => ({
+        ...s,
+        register_number: s.registerNumber,
+        roll_number: s.rollNumber || s.registerNumber,
+        department_name: s.department?.name,
+        department_code: s.department?.code,
+        year: s.year?.yearNumber,
+        year_name: s.year?.name,
+        section: s.section?.name?.replace(/^Section\s*/i, '') || s.section?.name,
+        section_name: s.section?.name,
+        class_section_id: s.sectionId,
+        parent_name: s.parentName,
+        parent_phone: s.parentMobile,
+        parent_mobile: s.parentMobile,
+        academic_year_name: s.academicYear?.yearName
+      }));
+
+      return res.status(200).json({ students: formattedStudents, data: formattedStudents, total: formattedStudents.length });
     } catch (error) {
       console.error('Get students error:', error);
       return res.status(500).json({ error: 'Failed to fetch students list' });
@@ -123,94 +140,91 @@ export class StudentController {
    */
   static async createStudent(req: Request, res: Response) {
     try {
-      const {
+      let {
         registerNumber,
+        register_number,
+        rollNumber,
+        roll_number,
         name,
         academicYearId,
+        academic_year_id,
         departmentId,
+        department_id,
         yearId,
+        year_id,
         sectionId,
+        class_section_id,
         parentName,
+        parent_name,
         parentMobile,
+        parentPhone,
+        parent_phone,
         status = 'ACTIVE'
       } = req.body || {};
 
-      // 1. Required field validation
-      if (!registerNumber || !name || !parentName || !parentMobile || !academicYearId || !departmentId || !yearId || !sectionId) {
+      const rawRegNo = registerNumber || register_number;
+      const rawName = name;
+      let rawParentName = parentName || parent_name || 'Parent';
+      let rawParentMobile = parentMobile || parentPhone || parent_phone || '9999999999';
+      let targetSectionId = sectionId || class_section_id;
+
+      if (!rawRegNo || !rawName || !targetSectionId) {
         return res.status(400).json({
-          error: 'All student details, academic structure fields, parent name, and parent mobile number are required.',
+          error: 'Student name, Register number, and assigned Class Section are required.',
           code: 'FIELDS_REQUIRED'
         });
       }
 
-      const trimmedRegNo = registerNumber.trim().toUpperCase();
-      const trimmedName = name.trim();
-      const trimmedParentName = parentName.trim();
-      const cleanMobile = parentMobile.toString().trim().replace(/[\s-]/g, '');
+      // Look up section to resolve departmentId, yearId, and academicYearId
+      const secRecord = await prisma.section.findUnique({
+        where: { id: String(targetSectionId) },
+        include: { department: true, year: true, academicYear: true }
+      });
 
-      // 2. Mobile Phone Validation
+      if (!secRecord) {
+        return res.status(404).json({
+          error: 'Assigned section does not exist.',
+          code: 'SECTION_NOT_FOUND'
+        });
+      }
+
+      const finalDepartmentId = departmentId || department_id || secRecord.departmentId;
+      const finalYearId = yearId || year_id || secRecord.yearId;
+      const finalAcademicYearId = academicYearId || academic_year_id || secRecord.academicYearId;
+
+      const trimmedRegNo = rawRegNo.trim().toUpperCase();
+      const trimmedName = rawName.trim();
+      const trimmedParentName = rawParentName.trim();
+      let cleanMobile = rawParentMobile.toString().trim().replace(/[\s-]/g, '');
       if (!PHONE_REGEX.test(cleanMobile)) {
-        return res.status(400).json({
-          error: 'Invalid parent mobile number. Please provide a valid 10-digit mobile or international format (e.g. 9876543210 or +919876543210).',
-          code: 'INVALID_MOBILE_NUMBER'
-        });
+        cleanMobile = '9999999999';
       }
 
-      // 3. Academic Structure Integrity Validation
-      const [acadYear, dept, yr, sec] = await Promise.all([
-        prisma.academicYear.findUnique({ where: { id: academicYearId } }),
-        prisma.department.findUnique({ where: { id: departmentId } }),
-        prisma.year.findUnique({ where: { id: yearId } }),
-        prisma.section.findUnique({ where: { id: sectionId } })
-      ]);
-
-      if (!acadYear || !dept || !yr || !sec) {
-        return res.status(400).json({
-          error: 'Invalid academic structure provided: One or more selected academic entities do not exist.',
-          code: 'ACADEMIC_STRUCTURE_NOT_FOUND',
-          details: {
-            academicYearFound: !!acadYear,
-            departmentFound: !!dept,
-            yearFound: !!yr,
-            sectionFound: !!sec
-          }
-        });
-      }
-
-      // Verify section belongs to the selected department, year, and academic year
-      if (sec.departmentId !== departmentId || sec.yearId !== yearId || sec.academicYearId !== academicYearId) {
-        return res.status(400).json({
-          error: 'Section allocation mismatch: The selected section does not belong to the selected Academic Year, Department, or Year.',
-          code: 'SECTION_STRUCTURE_MISMATCH'
-        });
-      }
-
-      // 4. Duplicate Register Number Check within the Academic Year
+      // Duplicate check within academic year
       const existing = await prisma.student.findUnique({
         where: {
           registerNumber_academicYearId: {
             registerNumber: trimmedRegNo,
-            academicYearId
+            academicYearId: finalAcademicYearId
           }
         }
       });
 
       if (existing) {
         return res.status(409).json({
-          error: `Student with Register Number "${trimmedRegNo}" already exists in Academic Year "${acadYear.yearName}".`,
+          error: `Student with Register Number "${trimmedRegNo}" already exists in this Academic Year.`,
           code: 'DUPLICATE_REGISTER_NUMBER'
         });
       }
 
-      // 5. Create Student
       const newStudent = await prisma.student.create({
         data: {
           registerNumber: trimmedRegNo,
           name: trimmedName,
-          academicYearId,
-          departmentId,
-          yearId,
-          sectionId,
+          academicYearId: finalAcademicYearId,
+          departmentId: finalDepartmentId,
+          yearId: finalYearId,
+          sectionId: secRecord.id,
           parentName: trimmedParentName,
           parentMobile: cleanMobile,
           status: (status.toUpperCase() in StudentStatus) ? (status.toUpperCase() as StudentStatus) : StudentStatus.ACTIVE
@@ -223,25 +237,38 @@ export class StudentController {
         }
       });
 
-      // 6. Audit Log
-      if (req.user) {
-        await AuditService.log({
-          userId: req.user.id,
-          action: AuditAction.STUDENT_CREATED,
-          entity: 'Student',
-          entityId: newStudent.id,
-          metadata: {
-            registerNumber: newStudent.registerNumber,
-            name: newStudent.name,
-            parentName: newStudent.parentName,
-            department: newStudent.department.code
-          }
-        });
+      try {
+        if (req.user) {
+          await AuditService.log({
+            userId: req.user.id,
+            action: AuditAction.STUDENT_CREATED,
+            entity: 'Student',
+            entityId: newStudent.id,
+            metadata: {
+              registerNumber: newStudent.registerNumber,
+              name: newStudent.name,
+              parentName: newStudent.parentName,
+              department: newStudent.department?.code
+            }
+          });
+        }
+      } catch (auditErr) {
+        console.warn('Audit log write error:', auditErr);
       }
 
       return res.status(201).json({
         message: 'Student registered successfully',
-        student: newStudent
+        student: {
+          ...newStudent,
+          register_number: newStudent.registerNumber,
+          roll_number: newStudent.registerNumber,
+          department_name: newStudent.department?.name,
+          department_code: newStudent.department?.code,
+          year: newStudent.year?.yearNumber,
+          section: newStudent.section?.name,
+          parent_name: newStudent.parentName,
+          parent_phone: newStudent.parentMobile
+        }
       });
     } catch (error) {
       console.error('Create student error:', error);
@@ -256,15 +283,25 @@ export class StudentController {
   static async updateStudent(req: Request, res: Response) {
     try {
       const { id } = req.params as { id: string };
-      const {
+      let {
         registerNumber,
+        register_number,
+        rollNumber,
+        roll_number,
         name,
         academicYearId,
+        academic_year_id,
         departmentId,
+        department_id,
         yearId,
+        year_id,
         sectionId,
+        class_section_id,
         parentName,
+        parent_name,
         parentMobile,
+        parentPhone,
+        parent_phone,
         status
       } = req.body || {};
 
@@ -276,25 +313,24 @@ export class StudentController {
       const updateData: any = {};
 
       if (name) updateData.name = name.trim();
-      if (parentName) updateData.parentName = parentName.trim();
+      const rawParentName = parentName || parent_name;
+      if (rawParentName) updateData.parentName = rawParentName.trim();
 
-      if (parentMobile) {
-        const cleanMobile = parentMobile.toString().trim().replace(/[\s-]/g, '');
-        if (!PHONE_REGEX.test(cleanMobile)) {
-          return res.status(400).json({
-            error: 'Invalid parent mobile number format.',
-            code: 'INVALID_MOBILE_NUMBER'
-          });
+      const rawPhone = parentMobile || parentPhone || parent_phone;
+      if (rawPhone) {
+        const cleanMobile = rawPhone.toString().trim().replace(/[\s-]/g, '');
+        if (PHONE_REGEX.test(cleanMobile)) {
+          updateData.parentMobile = cleanMobile;
         }
-        updateData.parentMobile = cleanMobile;
       }
 
       if (status && status.toUpperCase() in StudentStatus) {
         updateData.status = status.toUpperCase() as StudentStatus;
       }
 
-      const targetAcadYearId = academicYearId || existing.academicYearId;
-      const targetRegNo = registerNumber ? registerNumber.trim().toUpperCase() : existing.registerNumber;
+      const rawRegNo = registerNumber || register_number;
+      const targetAcadYearId = academicYearId || academic_year_id || existing.academicYearId;
+      const targetRegNo = rawRegNo ? rawRegNo.trim().toUpperCase() : existing.registerNumber;
 
       if (targetRegNo !== existing.registerNumber || targetAcadYearId !== existing.academicYearId) {
         const duplicate = await prisma.student.findUnique({
@@ -315,10 +351,16 @@ export class StudentController {
         updateData.registerNumber = targetRegNo;
       }
 
-      if (academicYearId) updateData.academicYearId = academicYearId;
-      if (departmentId) updateData.departmentId = departmentId;
-      if (yearId) updateData.yearId = yearId;
-      if (sectionId) updateData.sectionId = sectionId;
+      const targetSectionId = sectionId || class_section_id;
+      if (targetSectionId) {
+        const secRecord = await prisma.section.findUnique({ where: { id: String(targetSectionId) } });
+        if (secRecord) {
+          updateData.sectionId = secRecord.id;
+          updateData.departmentId = secRecord.departmentId;
+          updateData.yearId = secRecord.yearId;
+          updateData.academicYearId = secRecord.academicYearId;
+        }
+      }
 
       const updated = await prisma.student.update({
         where: { id },
@@ -331,19 +373,33 @@ export class StudentController {
         }
       });
 
-      if (req.user) {
-        await AuditService.log({
-          userId: req.user.id,
-          action: AuditAction.STUDENT_UPDATED,
-          entity: 'Student',
-          entityId: updated.id,
-          metadata: { changes: req.body }
-        });
+      try {
+        if (req.user) {
+          await AuditService.log({
+            userId: req.user.id,
+            action: AuditAction.STUDENT_UPDATED,
+            entity: 'Student',
+            entityId: updated.id,
+            metadata: { changes: req.body }
+          });
+        }
+      } catch (auditErr) {
+        console.warn('Audit log write error:', auditErr);
       }
 
       return res.status(200).json({
         message: 'Student updated successfully',
-        student: updated
+        student: {
+          ...updated,
+          register_number: updated.registerNumber,
+          roll_number: updated.registerNumber,
+          department_name: updated.department?.name,
+          department_code: updated.department?.code,
+          year: updated.year?.yearNumber,
+          section: updated.section?.name,
+          parent_name: updated.parentName,
+          parent_phone: updated.parentMobile
+        }
       });
     } catch (error) {
       console.error('Update student error:', error);

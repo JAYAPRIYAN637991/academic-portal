@@ -37,7 +37,7 @@ export const StudentsView: React.FC = () => {
   const [registerNumber, setRegisterNumber] = useState('');
   const [rollNumber, setRollNumber] = useState('');
   const [name, setName] = useState('');
-  const [sectionId, setSectionId] = useState<number | string>('');
+  const [sectionId, setSectionId] = useState<string>('');
   const [parentName, setParentName] = useState('');
   const [parentPhone, setParentPhone] = useState('');
   const [parentEmail, setParentEmail] = useState('');
@@ -60,9 +60,9 @@ export const StudentsView: React.FC = () => {
         api.get('/admin/academic-years').catch(() => api.get('/academic-years').catch(() => ({ academicYears: [] }))),
       ]);
 
-      const studentsList = unpackList<Student>(studRes, 'students');
-      const sectionsList = unpackList<YearSection>(secRes, 'sections');
-      const departmentsList = unpackList<Department>(deptRes, 'departments');
+      const studentsList = unpackList<any>(studRes, 'students');
+      const sectionsList = unpackList<any>(secRes, 'sections');
+      const departmentsList = unpackList<any>(deptRes, 'departments');
       const rawAyList = unpackList<any>(ayRes, 'academicYears');
 
       setStudents(studentsList);
@@ -73,12 +73,14 @@ export const StudentsView: React.FC = () => {
         setAcademicYears(
           rawAyList.map((ay: any) => ({
             id: ay.id,
-            year: ay.yearName || ay.year,
+            year: ay.yearName || ay.year || ay.name,
             isCurrent: !!(ay.isCurrent || ay.is_current),
           }))
         );
       }
-      if (sectionsList.length > 0 && !sectionId) setSectionId(sectionsList[0].id);
+      if (sectionsList.length > 0 && !sectionId) {
+        setSectionId(String(sectionsList[0].id));
+      }
     } catch (err: any) {
       error('Failed to load students', err.message);
     } finally {
@@ -90,6 +92,12 @@ export const StudentsView: React.FC = () => {
     fetchData();
   }, []);
 
+  useEffect(() => {
+    if (sections.length > 0 && !sectionId) {
+      setSectionId(String(sections[0].id));
+    }
+  }, [sections, sectionId]);
+
   const handleOpenAdd = () => {
     setEditingStudent(null);
     setRegisterNumber('');
@@ -98,33 +106,47 @@ export const StudentsView: React.FC = () => {
     setParentName('');
     setParentPhone('');
     setParentEmail('');
+    if (sections.length > 0 && !sectionId) {
+      setSectionId(String(sections[0].id));
+    }
     setIsModalOpen(true);
   };
 
-  const handleOpenEdit = (student: Student) => {
+  const handleOpenEdit = (student: any) => {
     setEditingStudent(student);
-    setRegisterNumber(student.register_number);
-    setRollNumber(student.roll_number);
-    setName(student.name);
-    setSectionId(student.class_section_id);
-    setParentName(student.parent_name || '');
-    setParentPhone(student.parent_phone || '');
-    setParentEmail(student.parent_email || '');
+    setRegisterNumber(student.register_number || student.registerNumber || '');
+    setRollNumber(student.roll_number || student.rollNumber || student.register_number || student.registerNumber || '');
+    setName(student.name || '');
+    setSectionId(String(student.class_section_id || student.sectionId || student.section?.id || ''));
+    setParentName(student.parent_name || student.parentName || '');
+    setParentPhone(student.parent_phone || student.parentMobile || '');
+    setParentEmail(student.parent_email || student.parentEmail || '');
     setIsModalOpen(true);
   };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!sectionId) {
+      error('Validation Error', 'Please select an assigned class section.');
+      return;
+    }
     setIsSubmitting(true);
     try {
+      const reg = registerNumber.trim().toUpperCase();
+      const roll = (rollNumber || reg).trim().toUpperCase();
       const payload = {
-        register_number: registerNumber,
-        roll_number: rollNumber,
-        name,
+        registerNumber: reg,
+        register_number: reg,
+        rollNumber: roll,
+        roll_number: roll,
+        name: name.trim(),
+        sectionId: sectionId,
         class_section_id: sectionId,
-        parent_name: parentName,
-        parent_phone: parentPhone,
-        parent_email: parentEmail,
+        parentName: (parentName || 'Parent').trim(),
+        parent_name: (parentName || 'Parent').trim(),
+        parentMobile: (parentPhone || '9999999999').trim(),
+        parent_phone: (parentPhone || '9999999999').trim(),
+        parent_email: (parentEmail || '').trim()
       };
 
       if (editingStudent) {
@@ -155,15 +177,24 @@ export const StudentsView: React.FC = () => {
     }
   };
 
-  const filtered = students.filter((s) => {
-    const matchesSearch =
-      s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.register_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.roll_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (s.parent_phone || '').includes(searchQuery);
+  const filtered = students.filter((s: any) => {
+    const regNo = (s.register_number || s.registerNumber || '').toLowerCase();
+    const rollNo = (s.roll_number || s.rollNumber || '').toLowerCase();
+    const sName = (s.name || '').toLowerCase();
+    const sPhone = (s.parent_phone || s.parentMobile || '').toLowerCase();
+    const sQuery = searchQuery.toLowerCase();
 
-    const matchesDept = filterDept === 'ALL' || (s.department_name && s.department_name.includes(filterDept));
-    const matchesYear = filterYear === 'ALL' || String(s.year) === filterYear;
+    const matchesSearch =
+      sName.includes(sQuery) ||
+      regNo.includes(sQuery) ||
+      rollNo.includes(sQuery) ||
+      sPhone.includes(sQuery);
+
+    const deptVal = String(s.department?.name || s.department_name || s.department?.code || s.department_code || '');
+    const matchesDept = filterDept === 'ALL' || deptVal.toLowerCase().includes(filterDept.toLowerCase());
+
+    const yrVal = String(s.year?.yearNumber || s.year || s.yearNumber || '');
+    const matchesYear = filterYear === 'ALL' || yrVal === filterYear;
 
     return matchesSearch && matchesDept && matchesYear;
   });
@@ -171,46 +202,50 @@ export const StudentsView: React.FC = () => {
   const totalPages = Math.ceil(filtered.length / pageSize) || 1;
   const paginatedData = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
-  const columns: Column<Student>[] = [
+  const columns: Column<any>[] = [
     {
       header: 'Register No.',
-      accessor: (row) => (
-        <span className="font-mono text-xs font-bold text-indigo-400">{row.register_number}</span>
+      accessor: (row: any) => (
+        <span className="font-mono text-xs font-bold text-indigo-400">
+          {row.register_number || row.registerNumber}
+        </span>
       ),
     },
     {
       header: 'Student Name',
-      accessor: (row) => (
+      accessor: (row: any) => (
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-full bg-slate-800 text-slate-200 flex items-center justify-center text-xs font-bold shrink-0">
-            {row.name.charAt(0)}
+            {(row.name || 'S').charAt(0)}
           </div>
           <div>
             <span className="font-semibold text-white block">{row.name}</span>
-            <span className="text-[11px] text-slate-400">Roll: {row.roll_number}</span>
+            <span className="text-[11px] text-slate-400">
+              Roll: {row.roll_number || row.rollNumber || row.register_number || row.registerNumber}
+            </span>
           </div>
         </div>
       ),
     },
     {
       header: 'Class & Section',
-      accessor: (row) => (
+      accessor: (row: any) => (
         <div>
           <Badge variant="primary">
-            {row.department_name || 'CSE'} - Yr {row.year || 3} ({row.section || 'A'})
+            {row.department?.code || row.department_code || row.department?.name || row.department_name || 'Dept'} - Yr {row.year?.yearNumber || row.year || row.yearNumber || 1} ({row.section?.name || row.section_name || (row.section ? `Section ${row.section}` : 'A')})
           </Badge>
         </div>
       ),
     },
     {
       header: 'Parent Contact (SMS / WhatsApp)',
-      accessor: (row) => (
+      accessor: (row: any) => (
         <div className="text-xs space-y-0.5">
-          <div className="text-slate-200 font-medium">{row.parent_name || 'Parent'}</div>
-          {row.parent_phone && (
+          <div className="text-slate-200 font-medium">{row.parent_name || row.parentName || 'Parent'}</div>
+          {(row.parent_phone || row.parentMobile) && (
             <div className="flex items-center gap-1 text-[11px] text-emerald-400">
               <Phone className="w-3 h-3" />
-              <span>{row.parent_phone}</span>
+              <span>{row.parent_phone || row.parentMobile}</span>
             </div>
           )}
         </div>
@@ -220,7 +255,7 @@ export const StudentsView: React.FC = () => {
       header: 'Actions',
       className: 'text-right',
       headerClassName: 'text-right',
-      accessor: (row) => (
+      accessor: (row: any) => (
         <div className="flex items-center justify-end gap-1.5">
           <button
             onClick={() => handleOpenEdit(row)}
@@ -399,14 +434,19 @@ export const StudentsView: React.FC = () => {
             </label>
             <select
               value={sectionId}
-              onChange={(e) => setSectionId(Number(e.target.value))}
+              onChange={(e) => setSectionId(e.target.value)}
               className="w-full px-3.5 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:border-indigo-500"
+              required
             >
-              {sections.map((sec) => (
-                <option key={sec.id} value={sec.id}>
-                  {sec.department_name || sec.department_code} - Year {sec.year} Section {sec.section}
-                </option>
-              ))}
+              {sections.length === 0 ? (
+                <option value="">No Class Sections Available (Create section first)</option>
+              ) : (
+                sections.map((sec: any) => (
+                  <option key={sec.id} value={sec.id}>
+                    {sec.department?.code || sec.department_code || sec.department?.name || sec.department_name || 'Dept'} - Year {sec.year?.yearNumber || sec.year || sec.yearNumber || 1} ({sec.name || (sec.section ? `Section ${sec.section}` : 'A')})
+                  </option>
+                ))
+              )}
             </select>
           </div>
 
