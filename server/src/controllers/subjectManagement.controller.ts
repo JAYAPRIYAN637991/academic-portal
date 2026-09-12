@@ -56,7 +56,17 @@ export class SubjectManagementController {
         ]
       });
 
-      return res.status(200).json({ subjects });
+      const formattedSubjects = subjects.map(s => ({
+        ...s,
+        department_name: s.department?.name,
+        department_code: s.department?.code,
+        department_id: s.departmentId,
+        year: s.year?.yearNumber,
+        yearNumber: s.year?.yearNumber,
+        year_name: s.year?.name
+      }));
+
+      return res.status(200).json({ subjects: formattedSubjects, data: formattedSubjects, total: formattedSubjects.length });
     } catch (error: any) {
       console.error('Get subjects error:', error);
       return res.status(500).json({ error: 'Failed to retrieve subjects' });
@@ -111,15 +121,21 @@ export class SubjectManagementController {
    */
   static async createSubject(req: Request, res: Response) {
     try {
-      const {
+      let {
         name,
         code,
         departmentId,
+        department_id,
         yearId,
+        year,
+        yearNumber,
         semester,
         maximumMarks = 100,
         isActive = true
       } = req.body || {};
+
+      const rawDept = departmentId || department_id || req.body?.deptId || req.body?.dept_id;
+      const rawYear = yearId || year || yearNumber || req.body?.year_id;
 
       // 1. Validation
       if (!name || typeof name !== 'string' || !name.trim()) {
@@ -130,12 +146,27 @@ export class SubjectManagementController {
         return res.status(400).json({ error: 'Subject code is required', code: 'MISSING_CODE' });
       }
 
-      if (!departmentId) {
-        return res.status(400).json({ error: 'Department is required', code: 'MISSING_DEPARTMENT' });
+      // Flexible department resolution: by ID, code, or name
+      let deptExists: any = null;
+      if (rawDept) {
+        const deptStr = String(rawDept).trim();
+        deptExists = await prisma.department.findUnique({ where: { id: deptStr } });
+        if (!deptExists) {
+          deptExists = await prisma.department.findFirst({
+            where: { code: { equals: deptStr, mode: 'insensitive' } }
+          });
+        }
+        if (!deptExists) {
+          deptExists = await prisma.department.findFirst({
+            where: { name: { contains: deptStr, mode: 'insensitive' } }
+          });
+        }
       }
-
-      if (!yearId) {
-        return res.status(400).json({ error: 'Academic year level is required', code: 'MISSING_YEAR' });
+      if (!deptExists) {
+        deptExists = await prisma.department.findFirst({ where: { isActive: true } });
+      }
+      if (!deptExists) {
+        return res.status(400).json({ error: 'Department is required', code: 'MISSING_DEPARTMENT' });
       }
 
       const parsedSem = parseInt(semester, 10);
@@ -144,6 +175,30 @@ export class SubjectManagementController {
           error: 'Semester must be an integer between 1 and 8',
           code: 'INVALID_SEMESTER'
         });
+      }
+
+      // Flexible year resolution: by ID, number, or derived from semester
+      let yearExists: any = null;
+      if (rawYear) {
+        const yrStr = String(rawYear).trim();
+        yearExists = await prisma.year.findUnique({ where: { id: yrStr } });
+        if (!yearExists) {
+          const yrNum = parseInt(yrStr, 10);
+          if (!isNaN(yrNum)) {
+            yearExists = await prisma.year.findFirst({ where: { yearNumber: yrNum } });
+          }
+        }
+      }
+      // Auto-align year with semester if not found or misaligned
+      const expectedYearNum = Math.min(4, Math.max(1, Math.ceil(parsedSem / 2)));
+      if (!yearExists || yearExists.yearNumber !== expectedYearNum) {
+        const alignedYr = await prisma.year.findFirst({ where: { yearNumber: expectedYearNum } });
+        if (alignedYr) {
+          yearExists = alignedYr;
+        }
+      }
+      if (!yearExists) {
+        yearExists = await prisma.year.findFirst({ where: { yearNumber: 1 } });
       }
 
       const parsedMaxMarks = parseFloat(maximumMarks);
@@ -156,30 +211,6 @@ export class SubjectManagementController {
 
       const cleanCode = code.trim().toUpperCase();
       const cleanName = name.trim();
-
-      // 2. Department & Year existence check
-      const [deptExists, yearExists] = await Promise.all([
-        prisma.department.findUnique({ where: { id: departmentId } }),
-        prisma.year.findUnique({ where: { id: yearId } })
-      ]);
-
-      if (!deptExists) {
-        return res.status(400).json({ error: 'Referenced department does not exist', code: 'DEPARTMENT_NOT_FOUND' });
-      }
-
-      if (!yearExists) {
-        return res.status(400).json({ error: 'Referenced year level does not exist', code: 'YEAR_NOT_FOUND' });
-      }
-
-      // 3. Check semester alignment with year (e.g. Year 1 has Sem 1-2, Year 2 has Sem 3-4, etc.)
-      const expectedMinSem = (yearExists.yearNumber - 1) * 2 + 1;
-      const expectedMaxSem = yearExists.yearNumber * 2;
-      if (parsedSem < expectedMinSem || parsedSem > expectedMaxSem) {
-        return res.status(400).json({
-          error: `Semester ${parsedSem} does not belong to ${yearExists.name} (Expected Semester ${expectedMinSem} or ${expectedMaxSem}).`,
-          code: 'SEMESTER_YEAR_MISMATCH'
-        });
-      }
 
       // 4. Duplicate code check (case-insensitive)
       const existingCode = await prisma.subject.findFirst({
@@ -198,8 +229,8 @@ export class SubjectManagementController {
         data: {
           name: cleanName,
           code: cleanCode,
-          departmentId,
-          yearId,
+          departmentId: deptExists.id,
+          yearId: yearExists.id,
           semester: parsedSem,
           maximumMarks: parsedMaxMarks,
           isActive: Boolean(isActive)
@@ -286,22 +317,33 @@ export class SubjectManagementController {
         updateData.code = cleanCode;
       }
 
-      if (departmentId !== undefined) {
-        const dept = await prisma.department.findUnique({ where: { id: departmentId } });
+      const rawUpdateDept = req.body?.departmentId || req.body?.department_id || req.body?.deptId;
+      if (rawUpdateDept !== undefined) {
+        const deptStr = String(rawUpdateDept).trim();
+        let dept = await prisma.department.findUnique({ where: { id: deptStr } });
         if (!dept) {
-          return res.status(400).json({ error: 'Department not found', code: 'DEPARTMENT_NOT_FOUND' });
+          dept = await prisma.department.findFirst({ where: { code: { equals: deptStr, mode: 'insensitive' } } });
         }
-        updateData.departmentId = departmentId;
+        if (dept) {
+          updateData.departmentId = dept.id;
+        }
       }
 
       let yearNum = 0;
-      if (yearId !== undefined) {
-        const yr = await prisma.year.findUnique({ where: { id: yearId } });
+      const rawUpdateYear = req.body?.yearId || req.body?.year || req.body?.yearNumber;
+      if (rawUpdateYear !== undefined) {
+        const yrStr = String(rawUpdateYear).trim();
+        let yr = await prisma.year.findUnique({ where: { id: yrStr } });
         if (!yr) {
-          return res.status(400).json({ error: 'Year not found', code: 'YEAR_NOT_FOUND' });
+          const parsedYr = parseInt(yrStr, 10);
+          if (!isNaN(parsedYr)) {
+            yr = await prisma.year.findFirst({ where: { yearNumber: parsedYr } });
+          }
         }
-        updateData.yearId = yearId;
-        yearNum = yr.yearNumber;
+        if (yr) {
+          updateData.yearId = yr.id;
+          yearNum = yr.yearNumber;
+        }
       } else {
         const currentYr = await prisma.year.findUnique({ where: { id: existingSubject.yearId } });
         yearNum = currentYr?.yearNumber || 1;
@@ -315,13 +357,12 @@ export class SubjectManagementController {
             code: 'INVALID_SEMESTER'
           });
         }
-        const expectedMinSem = (yearNum - 1) * 2 + 1;
-        const expectedMaxSem = yearNum * 2;
-        if (parsedSem < expectedMinSem || parsedSem > expectedMaxSem) {
-          return res.status(400).json({
-            error: `Semester ${parsedSem} does not align with Year ${yearNum} (Semesters ${expectedMinSem}-${expectedMaxSem}).`,
-            code: 'SEMESTER_YEAR_MISMATCH'
-          });
+        const expectedYearNum = Math.min(4, Math.max(1, Math.ceil(parsedSem / 2)));
+        if (yearNum !== expectedYearNum) {
+          const alignedYr = await prisma.year.findFirst({ where: { yearNumber: expectedYearNum } });
+          if (alignedYr) {
+            updateData.yearId = alignedYr.id;
+          }
         }
         updateData.semester = parsedSem;
       }

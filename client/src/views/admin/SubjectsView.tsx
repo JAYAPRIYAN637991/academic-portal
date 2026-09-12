@@ -23,9 +23,9 @@ export const SubjectsView: React.FC = () => {
   const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
-  const [deptId, setDeptId] = useState<string | number>(1);
-  const [year, setYear] = useState<number>(1);
-  const [semester, setSemester] = useState<number>(1);
+  const [deptId, setDeptId] = useState<string>('');
+  const [year, setYear] = useState<number>(3);
+  const [semester, setSemester] = useState<number>(5);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Delete
@@ -38,12 +38,14 @@ export const SubjectsView: React.FC = () => {
         api.get('/subjects').catch(() => api.get('/admin/subjects')),
         api.get('/departments').catch(() => api.get('/admin/departments')),
       ]);
-      const subjectsList = unpackList<Subject>(subjRes, 'subjects');
-      const departmentsList = unpackList<Department>(deptRes, 'departments');
+      const subjectsList = unpackList<any>(subjRes, 'subjects');
+      const departmentsList = unpackList<any>(deptRes, 'departments');
 
       setSubjects(subjectsList);
       setDepartments(departmentsList);
-      if (departmentsList.length > 0 && !deptId) setDeptId(departmentsList[0].id);
+      if (departmentsList.length > 0 && !deptId) {
+        setDeptId(String(departmentsList[0].id));
+      }
     } catch (err: any) {
       error('Failed to load', err.message);
     } finally {
@@ -55,36 +57,72 @@ export const SubjectsView: React.FC = () => {
     fetchData();
   }, []);
 
+  useEffect(() => {
+    if (departments.length > 0 && !deptId) {
+      setDeptId(String(departments[0].id));
+    }
+  }, [departments, deptId]);
+
+  const handleYearChange = (newYear: number) => {
+    setYear(newYear);
+    const validMin = (newYear - 1) * 2 + 1;
+    const validMax = newYear * 2;
+    if (semester < validMin || semester > validMax) {
+      setSemester(validMin);
+    }
+  };
+
+  const handleSemesterChange = (newSem: number) => {
+    setSemester(newSem);
+    const correspondingYear = Math.min(4, Math.max(1, Math.ceil(newSem / 2)));
+    setYear(correspondingYear);
+  };
+
   const handleOpenAdd = () => {
     setEditingSubject(null);
     setCode('');
     setName('');
     setYear(3);
     setSemester(5);
+    if (departments.length > 0 && !deptId) {
+      setDeptId(String(departments[0].id));
+    }
     setIsModalOpen(true);
   };
 
-  const handleOpenEdit = (s: Subject) => {
+  const handleOpenEdit = (s: any) => {
     setEditingSubject(s);
     setCode(s.code);
     setName(s.name);
-    setDeptId(s.department_id);
-    setYear(s.year);
-    setSemester(s.semester);
+    setDeptId(String(s.departmentId || s.department_id || s.department?.id || ''));
+    setYear(s.year?.yearNumber || s.year || s.yearNumber || Math.ceil((s.semester || 1) / 2));
+    setSemester(s.semester || 1);
     setIsModalOpen(true);
   };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!deptId) {
+      error('Validation Error', 'Please select a department.');
+      return;
+    }
     setIsSubmitting(true);
     try {
-      const payload = { code: code.toUpperCase(), name, department_id: deptId, year, semester };
+      const payload = {
+        code: code.toUpperCase().trim(),
+        name: name.trim(),
+        departmentId: deptId,
+        department_id: deptId,
+        year,
+        yearNumber: year,
+        semester: Number(semester)
+      };
       if (editingSubject) {
         await api.put(`/subjects/${editingSubject.id}`, payload);
-        success('Updated', `Subject ${code} updated`);
+        success('Updated', `Subject ${code} updated.`);
       } else {
         await api.post('/subjects', payload);
-        success('Created', `Subject ${code} added to curriculum`);
+        success('Created', `Subject ${code} added to curriculum.`);
       }
       setIsModalOpen(false);
       fetchData();
@@ -107,22 +145,23 @@ export const SubjectsView: React.FC = () => {
     }
   };
 
-  const filtered = subjects.filter((s) => {
+  const filtered = subjects.filter((s: any) => {
     const matchesSearch =
-      s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.code.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesDept = filterDept === 'ALL' || String(s.department_id) === filterDept;
+      (s.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (s.code || '').toLowerCase().includes(searchQuery.toLowerCase());
+    const rowDeptId = String(s.departmentId || s.department_id || s.department?.id || '');
+    const matchesDept = filterDept === 'ALL' || rowDeptId === filterDept;
     return matchesSearch && matchesDept;
   });
 
-  const columns: Column<Subject>[] = [
+  const columns: Column<any>[] = [
     {
       header: 'Subject Code',
-      accessor: (row) => <span className="font-mono text-xs font-bold text-indigo-400">{row.code}</span>,
+      accessor: (row: any) => <span className="font-mono text-xs font-bold text-indigo-400">{row.code}</span>,
     },
     {
       header: 'Subject Name',
-      accessor: (row) => (
+      accessor: (row: any) => (
         <div className="flex items-center gap-2">
           <BookOpen className="w-4 h-4 text-slate-400" />
           <span className="font-semibold text-white">{row.name}</span>
@@ -131,13 +170,17 @@ export const SubjectsView: React.FC = () => {
     },
     {
       header: 'Department',
-      accessor: (row) => <Badge variant="neutral">{row.department_name || 'Engineering'}</Badge>,
+      accessor: (row: any) => (
+        <Badge variant="neutral">
+          {row.department?.code || row.department_code || row.department?.name || row.department_name || 'Engineering'}
+        </Badge>
+      ),
     },
     {
       header: 'Year & Semester',
-      accessor: (row) => (
+      accessor: (row: any) => (
         <span className="text-xs text-slate-300">
-          Year {row.year} &bull; Semester {row.semester}
+          Year {row.year?.yearNumber || row.year || row.yearNumber || Math.ceil((row.semester || 1) / 2)} &bull; Semester {row.semester}
         </span>
       ),
     },
@@ -145,7 +188,7 @@ export const SubjectsView: React.FC = () => {
       header: 'Actions',
       className: 'text-right',
       headerClassName: 'text-right',
-      accessor: (row) => (
+      accessor: (row: any) => (
         <div className="flex items-center justify-end gap-1.5">
           <button
             onClick={() => handleOpenEdit(row)}
@@ -186,7 +229,7 @@ export const SubjectsView: React.FC = () => {
       <SearchFilterBar
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
-        placeholder="Search subjects by name or code (e.g. CS8591)..."
+        placeholder="Search subjects by name or code (e.g., CS8591)..."
         onRefresh={fetchData}
         isRefreshing={isLoading}
         filters={
@@ -196,7 +239,7 @@ export const SubjectsView: React.FC = () => {
             className="px-3 py-2 bg-slate-900 border border-slate-700/80 rounded-lg text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
           >
             <option value="ALL">All Departments</option>
-            {departments.map((d) => (
+            {departments.map((d: any) => (
               <option key={d.id} value={d.id}>
                 {d.code} - {d.name}
               </option>
@@ -211,7 +254,7 @@ export const SubjectsView: React.FC = () => {
         isLoading={isLoading}
         keyExtractor={(item) => item.id}
         emptyTitle="No Subjects Found"
-        emptyDescription="Add curriculum subjects to assign teaching faculty and record marks."
+        emptyDescription="Add curriculum subjects to assign faculty and manage marks entry."
         emptyActionLabel="Add Subject"
         onEmptyAction={handleOpenAdd}
       />
@@ -234,7 +277,7 @@ export const SubjectsView: React.FC = () => {
                 value={code}
                 onChange={(e) => setCode(e.target.value.toUpperCase())}
                 placeholder="e.g. CS8591"
-                className="w-full px-3.5 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:border-indigo-500 uppercase"
+                className="w-full px-3.5 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:border-indigo-500 uppercase font-mono"
                 required
               />
             </div>
@@ -244,14 +287,19 @@ export const SubjectsView: React.FC = () => {
               </label>
               <select
                 value={deptId}
-                onChange={(e) => setDeptId(Number(e.target.value))}
+                onChange={(e) => setDeptId(e.target.value)}
                 className="w-full px-3.5 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:border-indigo-500"
+                required
               >
-                {departments.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.code}
-                  </option>
-                ))}
+                {departments.length === 0 ? (
+                  <option value="">No Departments Available</option>
+                ) : (
+                  departments.map((d: any) => (
+                    <option key={d.id} value={d.id}>
+                      {d.code} - {d.name}
+                    </option>
+                  ))
+                )}
               </select>
             </div>
           </div>
@@ -277,7 +325,7 @@ export const SubjectsView: React.FC = () => {
               </label>
               <select
                 value={year}
-                onChange={(e) => setYear(Number(e.target.value))}
+                onChange={(e) => handleYearChange(Number(e.target.value))}
                 className="w-full px-3.5 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:border-indigo-500"
               >
                 <option value={1}>Year 1</option>
@@ -290,15 +338,17 @@ export const SubjectsView: React.FC = () => {
               <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">
                 Semester (1 - 8) *
               </label>
-              <input
-                type="number"
-                min={1}
-                max={8}
+              <select
                 value={semester}
-                onChange={(e) => setSemester(Number(e.target.value))}
+                onChange={(e) => handleSemesterChange(Number(e.target.value))}
                 className="w-full px-3.5 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:border-indigo-500"
-                required
-              />
+              >
+                {[1, 2, 3, 4, 5, 6, 7, 8].map((s) => (
+                  <option key={s} value={s}>
+                    Semester {s} (Year {Math.ceil(s / 2)})
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
