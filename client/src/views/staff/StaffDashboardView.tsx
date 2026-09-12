@@ -40,27 +40,16 @@ export const StaffDashboardView: React.FC<StaffDashboardViewProps> = ({ onNaviga
   }, []);
 
   const metrics = data?.metrics || {
-    assigned_classes: 3,
-    assigned_subjects: 2,
-    total_students: 120,
-    pending_marks: 14,
-    completed_assessments: 2,
+    assigned_classes: 0,
+    assigned_subjects: 0,
+    total_students: 0,
+    pending_marks: 0,
+    completed_assessments: 0,
   };
 
-  const assignedClasses = data?.assigned_classes || [
-    { id: 1, department: 'CSE', year: 3, section: 'A', student_count: 60 },
-    { id: 2, department: 'CSE', year: 3, section: 'B', student_count: 60 },
-  ];
-
-  const assignedSubjects = data?.assigned_subjects || [
-    { id: 1, code: 'CS8591', name: 'Computer Networks', department: 'CSE', year: 3, semester: 5 },
-    { id: 2, code: 'CS8592', name: 'Object Oriented Analysis & Design', department: 'CSE', year: 3, semester: 5 },
-  ];
-
-  const recentUploads = data?.recent_uploads || [
-    { id: 1, subject_code: 'CS8591', assessment: 'IA-1', section: 'Year 3 - Sec A', count: 60, date: '2026-09-08' },
-    { id: 2, subject_code: 'CS8592', assessment: 'IA-1', section: 'Year 3 - Sec B', count: 60, date: '2026-09-07' },
-  ];
+  const assignedClasses = data?.assigned_classes || [];
+  const assignedSubjects = data?.assigned_subjects || [];
+  const recentUploads = data?.recent_uploads || [];
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
@@ -199,27 +188,33 @@ export const StaffDashboardView: React.FC<StaffDashboardViewProps> = ({ onNaviga
           }
         >
           <div className="space-y-3">
-            {assignedClasses.map((cls) => (
-              <div
-                key={cls.id}
-                className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-emerald-950 text-emerald-400 border border-emerald-800/40">
-                    <Layers className="w-4 h-4" />
+            {assignedClasses.length > 0 ? (
+              assignedClasses.map((cls) => (
+                <div
+                  key={cls.id}
+                  className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-emerald-950 text-emerald-400 border border-emerald-800/40">
+                      <Layers className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <span className="font-semibold text-white text-xs block">
+                        {cls.department} - Year {cls.year} (Section {cls.section})
+                      </span>
+                      <span className="text-[11px] text-slate-400">{cls.student_count} Enrolled Students</span>
+                    </div>
                   </div>
-                  <div>
-                    <span className="font-semibold text-white text-xs block">
-                      {cls.department} - Year {cls.year} (Section {cls.section})
-                    </span>
-                    <span className="text-[11px] text-slate-400">{cls.student_count} Enrolled Students</span>
-                  </div>
+                  <Badge variant="primary" size="sm">
+                    Active
+                  </Badge>
                 </div>
-                <Badge variant="primary" size="sm">
-                  Active
-                </Badge>
+              ))
+            ) : (
+              <div className="p-6 text-center border border-dashed border-slate-800 rounded-xl text-xs text-slate-500">
+                No active class allocations assigned to you yet.
               </div>
-            ))}
+            )}
           </div>
         </Card>
 
@@ -234,25 +229,31 @@ export const StaffDashboardView: React.FC<StaffDashboardViewProps> = ({ onNaviga
           }
         >
           <div className="space-y-3">
-            {assignedSubjects.map((sb) => (
-              <div
-                key={sb.id}
-                className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-indigo-950 text-indigo-400 border border-indigo-800/40">
-                    <BookOpen className="w-4 h-4" />
+            {assignedSubjects.length > 0 ? (
+              assignedSubjects.map((sb) => (
+                <div
+                  key={sb.id}
+                  className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-indigo-950 text-indigo-400 border border-indigo-800/40">
+                      <BookOpen className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <span className="font-mono text-xs font-bold text-indigo-300 block">{sb.code}</span>
+                      <span className="text-xs text-white font-medium">{sb.name}</span>
+                    </div>
                   </div>
-                  <div>
-                    <span className="font-mono text-xs font-bold text-indigo-300 block">{sb.code}</span>
-                    <span className="text-xs text-white font-medium">{sb.name}</span>
-                  </div>
+                  <Badge variant="neutral" size="sm">
+                    Sem {sb.semester}
+                  </Badge>
                 </div>
-                <Badge variant="neutral" size="sm">
-                  Sem {sb.semester}
-                </Badge>
+              ))
+            ) : (
+              <div className="p-6 text-center border border-dashed border-slate-800 rounded-xl text-xs text-slate-500">
+                No course subjects allocated to your profile yet.
               </div>
-            ))}
+            )}
           </div>
         </Card>
       </div>
@@ -260,25 +261,31 @@ export const StaffDashboardView: React.FC<StaffDashboardViewProps> = ({ onNaviga
       {/* Recent Marks Uploads */}
       <Card title="Recent Marks Uploads" subtitle="Latest assessment submissions recorded">
         <div className="space-y-2.5">
-          {recentUploads.map((up) => (
-            <div
-              key={up.id}
-              className="flex items-center justify-between p-3 rounded-lg bg-slate-950 border border-slate-800 text-xs"
-            >
-              <div className="flex items-center gap-3">
-                <div className="p-1.5 rounded-lg bg-slate-800 text-emerald-400">
-                  <CheckCircle className="w-4 h-4" />
+          {recentUploads.length > 0 ? (
+            recentUploads.map((up) => (
+              <div
+                key={up.id}
+                className="flex items-center justify-between p-3 rounded-lg bg-slate-950 border border-slate-800 text-xs"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="p-1.5 rounded-lg bg-slate-800 text-emerald-400">
+                    <CheckCircle className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="font-semibold text-white">
+                      {up.subject_code} - {up.assessment} ({up.section})
+                    </span>
+                    <span className="text-slate-400 block text-[11px]">{up.count} Students Evaluated</span>
+                  </div>
                 </div>
-                <div>
-                  <span className="font-semibold text-white">
-                    {up.subject_code} - {up.assessment} ({up.section})
-                  </span>
-                  <span className="text-slate-400 block text-[11px]">{up.count} Students Evaluated</span>
-                </div>
+                <span className="text-slate-400 font-mono text-[11px]">{up.date}</span>
               </div>
-              <span className="text-slate-400 font-mono text-[11px]">{up.date}</span>
+            ))
+          ) : (
+            <div className="p-6 text-center border border-dashed border-slate-800 rounded-xl text-xs text-slate-500">
+              No recent assessment mark uploads recorded yet.
             </div>
-          ))}
+          )}
         </div>
       </Card>
     </div>

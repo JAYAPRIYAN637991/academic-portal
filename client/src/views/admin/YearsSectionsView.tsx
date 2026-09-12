@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { api } from '../../services/api';
+import { api, unpackList } from '../../services/api';
 import { YearSection, Department, AcademicYear } from '../../types';
 import { DataTable, Column } from '../../components/data/DataTable';
 import { SearchFilterBar } from '../../components/data/SearchFilterBar';
@@ -16,14 +16,17 @@ export const YearsSectionsView: React.FC = () => {
   const [departments, setDepartments] = useState<Department[]>([]);
   const [academicYears, setAcademicYears] = useState<AcademicYear[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterDept, setFilterDept] = useState('ALL');
   const [isLoading, setIsLoading] = useState(true);
 
-  // Modals
+  // Filters
+  const [filterDept, setFilterDept] = useState('ALL');
+  const [filterYear, setFilterYear] = useState('ALL');
+
+  // Form State
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedYearId, setSelectedYearId] = useState<number>(1);
-  const [selectedDeptId, setSelectedDeptId] = useState<number>(1);
-  const [yearNum, setYearNum] = useState<number>(1);
+  const [selectedYearId, setSelectedYearId] = useState<string | number>('');
+  const [selectedDeptId, setSelectedDeptId] = useState<string | number>('');
+  const [yearNum, setYearNum] = useState(1);
   const [sectionLetter, setSectionLetter] = useState('A');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -33,18 +36,23 @@ export const YearsSectionsView: React.FC = () => {
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const [secRes, deptRes, yearRes] = await Promise.all([
-        api.get<YearSection[]>('/sections'),
-        api.get<Department[]>('/departments'),
-        api.get<AcademicYear[]>('/academic-years'),
+      const [secRes, deptRes, yearRes]: any = await Promise.all([
+        api.get('/sections').catch(() => api.get('/admin/sections')),
+        api.get('/departments').catch(() => api.get('/admin/departments')),
+        api.get('/academic-years').catch(() => api.get('/admin/academic-years')),
       ]);
-      setSections(Array.isArray(secRes) ? secRes : []);
-      setDepartments(Array.isArray(deptRes) ? deptRes : []);
-      setAcademicYears(Array.isArray(yearRes) ? yearRes : []);
 
-      if (Array.isArray(deptRes) && deptRes.length > 0) setSelectedDeptId(deptRes[0].id);
-      if (Array.isArray(yearRes) && yearRes.length > 0) {
-        const current = yearRes.find((y) => y.is_current) || yearRes[0];
+      const sectionsList = unpackList<YearSection>(secRes, 'sections');
+      const departmentsList = unpackList<Department>(deptRes, 'departments');
+      const academicYearsList = unpackList<AcademicYear>(yearRes, 'academicYears');
+
+      setSections(sectionsList);
+      setDepartments(departmentsList);
+      setAcademicYears(academicYearsList);
+
+      if (departmentsList.length > 0 && !selectedDeptId) setSelectedDeptId(departmentsList[0].id);
+      if (academicYearsList.length > 0 && !selectedYearId) {
+        const current = academicYearsList.find((y: any) => y.isCurrent || y.is_current) || academicYearsList[0];
         setSelectedYearId(current.id);
       }
     } catch (err: any) {
@@ -210,7 +218,7 @@ export const YearsSectionsView: React.FC = () => {
             </label>
             <select
               value={selectedDeptId}
-              onChange={(e) => setSelectedDeptId(Number(e.target.value))}
+              onChange={(e) => setSelectedDeptId(e.target.value)}
               className="w-full px-3.5 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:border-indigo-500"
               required
             >
@@ -260,7 +268,7 @@ export const YearsSectionsView: React.FC = () => {
             </label>
             <select
               value={selectedYearId}
-              onChange={(e) => setSelectedYearId(Number(e.target.value))}
+              onChange={(e) => setSelectedYearId(e.target.value)}
               className="w-full px-3.5 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:border-indigo-500"
             >
               {academicYears.map((y) => (

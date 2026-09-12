@@ -58,6 +58,24 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   return data as T;
 }
 
+/**
+ * Safely unpacks arrays from API responses that might be wrapped in an object
+ * (e.g. { departments: [...] }, { academicYears: [...] }, { sections: [...] }, { data: [...] })
+ */
+export function unpackList<T>(res: any, preferredKey?: string): T[] {
+  if (!res) return [];
+  if (Array.isArray(res)) return res;
+  if (preferredKey && Array.isArray(res[preferredKey])) return res[preferredKey];
+  const candidateKeys = [
+    'departments', 'academicYears', 'sections', 'subjects',
+    'students', 'marks', 'staff', 'years', 'data', 'items', 'records', 'list'
+  ];
+  for (const k of candidateKeys) {
+    if (Array.isArray(res[k])) return res[k];
+  }
+  return [];
+}
+
 export const api = {
   get: <T>(endpoint: string) => request<T>(endpoint, { method: 'GET' }),
   post: <T>(endpoint: string, body?: any) => 

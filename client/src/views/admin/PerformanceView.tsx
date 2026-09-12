@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { api } from '../../services/api';
+import { api, unpackList } from '../../services/api';
 import { Department, YearSection } from '../../types';
 import { DataTable, Column } from '../../components/data/DataTable';
 import { SearchFilterBar } from '../../components/data/SearchFilterBar';
@@ -20,7 +20,7 @@ interface StudentPerfRow {
   ia2_marks: number;
   improvement: number;
   pass_percentage: number;
-  status: 'PASSED' | 'FAILED' | 'NEEDS_ATTENTION';
+  status: string;
 }
 
 export const PerformanceView: React.FC = () => {
@@ -40,16 +40,16 @@ export const PerformanceView: React.FC = () => {
   const fetchPerformance = async () => {
     setIsLoading(true);
     try {
-      const [perfRes, deptRes, secRes] = await Promise.all([
-        api.get<any>('/analytics/performance'),
-        api.get<Department[]>('/departments'),
-        api.get<YearSection[]>('/sections'),
+      const [perfRes, deptRes, secRes]: any = await Promise.all([
+        api.get('/analytics/performance').catch(() => api.get('/analytics/performance/overview').catch(() => null)),
+        api.get('/departments').catch(() => api.get('/admin/departments')),
+        api.get('/sections').catch(() => api.get('/admin/sections')),
       ]);
 
-      const records = Array.isArray(perfRes) ? perfRes : perfRes?.students || [];
+      const records = Array.isArray(perfRes) ? perfRes : (perfRes?.students || perfRes?.records || perfRes?.data || []);
       setData(records);
-      setDepartments(Array.isArray(deptRes) ? deptRes : []);
-      setSections(Array.isArray(secRes) ? secRes : []);
+      setDepartments(unpackList<Department>(deptRes, 'departments'));
+      setSections(unpackList<YearSection>(secRes, 'sections'));
     } catch (err: any) {
       error('Failed to load performance metrics', err.message);
     } finally {

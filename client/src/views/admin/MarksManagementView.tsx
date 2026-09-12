@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { api } from '../../services/api';
+import { api, unpackList } from '../../services/api';
 import { Mark, Subject } from '../../types';
 import { DataTable, Column } from '../../components/data/DataTable';
 import { SearchFilterBar } from '../../components/data/SearchFilterBar';
@@ -19,16 +19,16 @@ export const MarksManagementView: React.FC = () => {
   const [filterAssessment, setFilterAssessment] = useState('ALL');
   const [isLoading, setIsLoading] = useState(true);
 
-  // Pagination
-  const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 12;
-
-  // Edit Mark Modal (with Reason for Audit Log)
+  // Edit Modal State
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedMark, setSelectedMark] = useState<Mark | null>(null);
   const [newMarksObtained, setNewMarksObtained] = useState<number>(0);
   const [changeReason, setChangeReason] = useState('');
   const [isUpdating, setIsUpdating] = useState(false);
+
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 15;
 
   // Delete Confirm
   const [markToDelete, setMarkToDelete] = useState<Mark | null>(null);
@@ -36,12 +36,15 @@ export const MarksManagementView: React.FC = () => {
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const [marksRes, subjRes] = await Promise.all([
-        api.get<Mark[]>('/marks'),
-        api.get<Subject[]>('/subjects'),
+      const [marksRes, subjRes]: any = await Promise.all([
+        api.get('/marks').catch(() => api.get('/admin/marks')),
+        api.get('/subjects').catch(() => api.get('/admin/subjects')),
       ]);
-      setMarks(Array.isArray(marksRes) ? marksRes : []);
-      setSubjects(Array.isArray(subjRes) ? subjRes : []);
+      const marksList = unpackList<Mark>(marksRes, 'marks');
+      const subjectsList = unpackList<Subject>(subjRes, 'subjects');
+
+      setMarks(marksList);
+      setSubjects(subjectsList);
     } catch (err: any) {
       error('Failed to load marks', err.message);
     } finally {

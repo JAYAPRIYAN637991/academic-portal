@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { api } from '../../services/api';
+import { api, unpackList } from '../../services/api';
 import { Student, YearSection, Department } from '../../types';
 import { DataTable, Column } from '../../components/data/DataTable';
 import { SearchFilterBar } from '../../components/data/SearchFilterBar';
@@ -18,59 +18,67 @@ export const StudentsView: React.FC = () => {
   const [students, setStudents] = useState<Student[]>([]);
   const [sections, setSections] = useState<YearSection[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
-  const [academicYears, setAcademicYears] = useState<Array<{ id: string; year: string; isCurrent: boolean }>>([]);
+  const [academicYears, setAcademicYears] = useState<
+    Array<{ id: string; year: string; isCurrent: boolean }>
+  >([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterDept, setFilterDept] = useState('ALL');
   const [filterYear, setFilterYear] = useState('ALL');
+  const [filterSection, setFilterSection] = useState('ALL');
   const [isLoading, setIsLoading] = useState(true);
 
-  // Pagination
-  const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 10;
-
-  // Add / Edit Modal
+  // Modals
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
+
+  // Form State
   const [registerNumber, setRegisterNumber] = useState('');
   const [rollNumber, setRollNumber] = useState('');
   const [name, setName] = useState('');
-  const [sectionId, setSectionId] = useState<number>(1);
+  const [sectionId, setSectionId] = useState<number | string>('');
   const [parentName, setParentName] = useState('');
   const [parentPhone, setParentPhone] = useState('');
   const [parentEmail, setParentEmail] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Bulk Import & History Modals
-  const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
-  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-
-  // Delete Confirm
+  // Confirm delete
   const [studentToDelete, setStudentToDelete] = useState<Student | null>(null);
+
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 15;
 
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const [studRes, secRes, deptRes, ayRes] = await Promise.all([
-        api.get<Student[]>('/students'),
-        api.get<YearSection[]>('/sections'),
-        api.get<Department[]>('/departments'),
-        api.get<{ academicYears: Array<{ id: string; yearName: string; isCurrent: boolean }> }>(
-          '/admin/academic-years'
-        ).catch(() => ({ academicYears: [] })),
+      const [studRes, secRes, deptRes, ayRes]: any = await Promise.all([
+        api.get('/students').catch(() => api.get('/admin/students')),
+        api.get('/sections').catch(() => api.get('/admin/sections')),
+        api.get('/departments').catch(() => api.get('/admin/departments')),
+        api.get('/admin/academic-years').catch(() => api.get('/academic-years').catch(() => ({ academicYears: [] }))),
       ]);
-      setStudents(Array.isArray(studRes) ? studRes : []);
-      setSections(Array.isArray(secRes) ? secRes : []);
-      setDepartments(Array.isArray(deptRes) ? deptRes : []);
-      if (ayRes?.academicYears) {
+
+      const studentsList = unpackList<Student>(studRes, 'students');
+      const sectionsList = unpackList<YearSection>(secRes, 'sections');
+      const departmentsList = unpackList<Department>(deptRes, 'departments');
+      const rawAyList = unpackList<any>(ayRes, 'academicYears');
+
+      setStudents(studentsList);
+      setSections(sectionsList);
+      setDepartments(departmentsList);
+
+      if (rawAyList.length > 0) {
         setAcademicYears(
-          ayRes.academicYears.map((ay) => ({
+          rawAyList.map((ay: any) => ({
             id: ay.id,
-            year: ay.yearName,
-            isCurrent: ay.isCurrent,
+            year: ay.yearName || ay.year,
+            isCurrent: !!(ay.isCurrent || ay.is_current),
           }))
         );
       }
-      if (Array.isArray(secRes) && secRes.length > 0) setSectionId(secRes[0].id);
+      if (sectionsList.length > 0 && !sectionId) setSectionId(sectionsList[0].id);
     } catch (err: any) {
       error('Failed to load students', err.message);
     } finally {

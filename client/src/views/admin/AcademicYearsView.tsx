@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { api } from '../../services/api';
+import { api, unpackList } from '../../services/api';
 import { AcademicYear } from '../../types';
 import { DataTable, Column } from '../../components/data/DataTable';
 import { SearchFilterBar } from '../../components/data/SearchFilterBar';
@@ -28,8 +28,9 @@ export const AcademicYearsView: React.FC = () => {
   const fetchYears = async () => {
     setIsLoading(true);
     try {
-      const res = await api.get<AcademicYear[]>('/academic-years');
-      setAcademicYears(Array.isArray(res) ? res : []);
+      const res: any = await api.get('/academic-years').catch(() => api.get('/admin/academic-years'));
+      const list = unpackList<AcademicYear>(res, 'academicYears');
+      setAcademicYears(list);
     } catch (err: any) {
       error('Failed to load', err.message);
     } finally {

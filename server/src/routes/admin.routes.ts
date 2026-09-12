@@ -32,6 +32,7 @@ router.use(requireAdmin);
 
 // Admin Dashboard Summary (Unified Institutional Command Center)
 router.get('/dashboard-summary', AdminController.getDashboardSummary);
+router.get('/dashboard', AdminController.getDashboardSummary);
 
 // Admin Profile & Credentials Management
 router.get('/profile', AdminController.getAdminProfile);
@@ -40,9 +41,13 @@ router.put('/profile/credentials', AdminController.updateAdminCredentials);
 // Institutional Overview & Analytics (Strictly Admin-Only)
 router.get('/analytics/overall', AdminAnalyticsController.getOverallAnalytics);
 router.get('/analytics/departments', AdminAnalyticsController.getDepartmentAnalytics);
+router.get('/analytics/department', AdminAnalyticsController.getDepartmentAnalytics);
 router.get('/analytics/years', AdminAnalyticsController.getYearWiseAnalytics);
+router.get('/analytics/year', AdminAnalyticsController.getYearWiseAnalytics);
 router.get('/analytics/sections', AdminAnalyticsController.getSectionAnalytics);
+router.get('/analytics/section', AdminAnalyticsController.getSectionAnalytics);
 router.get('/analytics/drilldown', AdminAnalyticsController.getDrilldown);
+router.get('/analytics/performance', PerformanceController.getPerformanceOverview);
 router.get('/analytics/performance/overview', PerformanceController.getPerformanceOverview);
 router.get('/analytics/performance/student/:studentId', PerformanceController.getStudentPerformance);
 router.get('/analytics/performance/section/:sectionId', PerformanceController.getSectionPerformance);

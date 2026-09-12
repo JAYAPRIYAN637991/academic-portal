@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { api } from '../../services/api';
+import { api, unpackList } from '../../services/api';
 import { Subject, YearSection } from '../../types';
 import { Button } from '../../components/common/Button';
 import { Card } from '../../components/common/Card';
@@ -13,14 +13,15 @@ import {
   AlertCircle,
   FileText,
   HelpCircle,
+  Sparkles,
 } from 'lucide-react';
 
 export const MarksUploadView: React.FC = () => {
   const { success, error } = useToast();
   const [sections, setSections] = useState<YearSection[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [selectedSectionId, setSelectedSectionId] = useState<number>(1);
-  const [selectedSubjectId, setSelectedSubjectId] = useState<number>(1);
+  const [selectedSectionId, setSelectedSectionId] = useState<string | number>('');
+  const [selectedSubjectId, setSelectedSubjectId] = useState<string | number>('');
   const [assessmentName, setAssessmentName] = useState('IA-1');
   const [maxMarks, setMaxMarks] = useState<number>(50);
 
@@ -39,14 +40,17 @@ export const MarksUploadView: React.FC = () => {
   useEffect(() => {
     const loadMetadata = async () => {
       try {
-        const [secRes, subjRes] = await Promise.all([
-          api.get<YearSection[]>('/sections'),
-          api.get<Subject[]>('/subjects'),
+        const [secRes, subjRes]: any = await Promise.all([
+          api.get('/sections').catch(() => api.get('/admin/sections')),
+          api.get('/subjects').catch(() => api.get('/admin/subjects')),
         ]);
-        setSections(Array.isArray(secRes) ? secRes : []);
-        setSubjects(Array.isArray(subjRes) ? subjRes : []);
-        if (Array.isArray(secRes) && secRes.length > 0) setSelectedSectionId(secRes[0].id);
-        if (Array.isArray(subjRes) && subjRes.length > 0) setSelectedSubjectId(subjRes[0].id);
+        const sectionsList = unpackList<YearSection>(secRes, 'sections');
+        const subjectsList = unpackList<Subject>(subjRes, 'subjects');
+
+        setSections(sectionsList);
+        setSubjects(subjectsList);
+        if (sectionsList.length > 0) setSelectedSectionId(sectionsList[0].id);
+        if (subjectsList.length > 0) setSelectedSubjectId(subjectsList[0].id);
       } catch (err: any) {
         error('Metadata Load Error', err.message);
       }
@@ -287,7 +291,7 @@ export const MarksUploadView: React.FC = () => {
               {uploadResult.errors && uploadResult.errors.length > 0 && (
                 <div className="mt-2 text-xs space-y-1">
                   <span className="font-semibold">Validation Notes:</span>
-                  {uploadResult.errors.map((err, i) => (
+                  {uploadResult.errors.map((err: string, i: number) => (
                     <div key={i} className="text-[11px] text-rose-300">&bull; {err}</div>
                   ))}
                 </div>

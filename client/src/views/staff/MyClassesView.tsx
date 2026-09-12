@@ -55,13 +55,8 @@ export const MyClassesView: React.FC = () => {
       const res: any = await api.get(`/staff/classes/${cls.id}/students`);
       setRoster(Array.isArray(res) ? res : res?.students || []);
     } catch (err) {
-      console.warn('Roster fetch fallback', err);
-      // Generate sample roster
-      setRoster([
-        { id: 1, register_number: '922521104001', roll_number: '21CS001', name: 'Aarav Sharma', parent_name: 'Rajesh Sharma', parent_phone: '9876543210' },
-        { id: 2, register_number: '922521104002', roll_number: '21CS002', name: 'Ananya Ramesh', parent_name: 'Ramesh K', parent_phone: '9876543211' },
-        { id: 3, register_number: '922521104003', roll_number: '21CS003', name: 'Bhavna Sundaram', parent_name: 'Sundaram P', parent_phone: '9876543212' },
-      ]);
+      console.warn('Roster fetch error', err);
+      setRoster([]);
     } finally {
       setIsRosterLoading(false);
     }

@@ -321,7 +321,7 @@ export class AcademicStructureController {
         orderBy: { code: 'asc' }
       });
 
-      return res.status(200).json({ departments });
+      return res.status(200).json({ departments, data: departments, total: departments.length });
     } catch (error) {
       console.error('Get departments error:', error);
       return res.status(500).json({ error: 'Failed to fetch departments' });

@@ -28,12 +28,14 @@ export class AdminController {
       const [
         overallAnalytics,
         staffCount,
+        allDepartments,
         noticeStats,
         recentNotices,
         notificationStats
       ] = await Promise.all([
         AdminAnalyticsService.getOverallCollegeAnalytics(academicYearId),
         prisma.user.count({ where: { role: Role.STAFF, isActive: true } }),
+        prisma.department.findMany({ where: { isActive: true }, orderBy: { code: 'asc' } }),
         prisma.collegeNotice.groupBy({
           by: ['status'],
           _count: { id: true }
@@ -90,51 +92,107 @@ export class AdminController {
         }
       }
 
-      // 8 Cards Data
+      const totalDepts = allDepartments.length;
+
+      // 8 Cards Data (both camelCase and snake_case)
       const cards = {
         totalStudents: overallAnalytics.totalStudents,
         totalStaff: staffCount,
-        departments: overallAnalytics.totalDepartments,
+        departments: totalDepts,
         sections: overallAnalytics.totalSections,
-        ia1Average: overallAnalytics.ia1Average,
-        ia2Average: overallAnalytics.ia2Average,
-        overallImprovement: overallAnalytics.overallImprovement,
-        passPercentage: overallAnalytics.overallPassPercentage
+        ia1Average: overallAnalytics.ia1Average ?? 0,
+        ia2Average: overallAnalytics.ia2Average ?? 0,
+        overallImprovement: overallAnalytics.overallImprovement ?? 0,
+        passPercentage: overallAnalytics.overallPassPercentage ?? 0
       };
+
+      const metrics = {
+        total_students: overallAnalytics.totalStudents,
+        total_staff: staffCount,
+        departments: totalDepts,
+        sections: overallAnalytics.totalSections,
+        ia1_average: overallAnalytics.ia1Average ?? 0,
+        ia2_average: overallAnalytics.ia2Average ?? 0,
+        overall_improvement: overallAnalytics.overallImprovement ?? 0,
+        pass_percentage: overallAnalytics.overallPassPercentage ?? 0,
+      };
+
+      // Map department performance including any newly created departments
+      const mappedDeptPerformance = allDepartments.map((dept) => {
+        const ranking = overallAnalytics.departmentRankings.find(
+          (r) => r.departmentId === dept.id || r.code === dept.code
+        );
+        return {
+          id: dept.id,
+          name: dept.name,
+          code: dept.code,
+          ia1_avg: ranking?.ia1Average ?? 0,
+          ia2_avg: ranking?.ia2Average ?? 0,
+          pass_rate: ranking?.passPercentage ?? 0,
+          total_students: ranking?.totalStudents ?? 0
+        };
+      });
+
+      const mappedYearPerformance = overallAnalytics.yearRankings.map((y) => ({
+        year: y.yearNumber,
+        ia1_avg: y.ia1Average ?? 0,
+        ia2_avg: y.ia2Average ?? 0,
+        improvement: y.improvement ?? 0,
+        pass_rate: y.passPercentage ?? 0,
+        total_students: y.totalStudents ?? 0
+      }));
+
+      const mappedSectionPerformance = overallAnalytics.sectionRankings.map((s) => ({
+        section: `${s.departmentCode} Y${s.yearName || ''}-${s.sectionName}`,
+        ia1_avg: s.ia1Average ?? 0,
+        ia2_avg: s.ia2Average ?? 0,
+        pass_rate: s.passPercentage ?? 0,
+        total_students: s.totalStudents ?? 0
+      }));
 
       return res.status(200).json({
         success: true,
         cards,
+        metrics,
         // Top-level aliases for direct metric card access
         totalStudents: overallAnalytics.totalStudents,
         totalStaff: staffCount,
-        departments: overallAnalytics.totalDepartments,
+        departments: totalDepts,
         sections: overallAnalytics.totalSections,
-        ia1Average: overallAnalytics.ia1Average,
-        ia2Average: overallAnalytics.ia2Average,
-        overallImprovement: overallAnalytics.overallImprovement,
-        passPercentage: overallAnalytics.overallPassPercentage,
+        ia1Average: overallAnalytics.ia1Average ?? 0,
+        ia2Average: overallAnalytics.ia2Average ?? 0,
+        overallImprovement: overallAnalytics.overallImprovement ?? 0,
+        passPercentage: overallAnalytics.overallPassPercentage ?? 0,
 
         performanceOverview: {
           totalStudents: overallAnalytics.totalStudents,
           evaluatedStudents: overallAnalytics.metrics.totalStudents,
           totalMarksEntered: overallAnalytics.metrics.totalMarksEntered,
-          ia1Average: overallAnalytics.ia1Average,
-          ia2Average: overallAnalytics.ia2Average,
-          overallImprovement: overallAnalytics.overallImprovement,
-          overallPassPercentage: overallAnalytics.overallPassPercentage,
+          ia1Average: overallAnalytics.ia1Average ?? 0,
+          ia2Average: overallAnalytics.ia2Average ?? 0,
+          overallImprovement: overallAnalytics.overallImprovement ?? 0,
+          overallPassPercentage: overallAnalytics.overallPassPercentage ?? 0,
           highestPercentage: overallAnalytics.highestPercentage,
           lowestPercentage: overallAnalytics.lowestPercentage,
           benchmarkStatus: overallAnalytics.overallPassPercentage >= 75 ? 'Optimal' : (overallAnalytics.overallPassPercentage >= 50 ? 'Standard' : 'Action Required')
         },
 
-        departmentPerformance: overallAnalytics.departmentRankings,
-        yearPerformance: overallAnalytics.yearRankings,
-        sectionPerformance: overallAnalytics.sectionRankings,
+        departmentPerformance: mappedDeptPerformance,
+        department_performance: mappedDeptPerformance,
+        yearPerformance: mappedYearPerformance,
+        year_performance: mappedYearPerformance,
+        sectionPerformance: mappedSectionPerformance,
+        section_performance: mappedSectionPerformance,
         topStudents: overallAnalytics.top10Students.slice(0, 5),
         allTopStudents: overallAnalytics.top10Students,
         studentsNeedingAttention: overallAnalytics.studentsNeedingAttention,
 
+        notices: {
+          draft: draftNotices,
+          scheduled: scheduledNotices,
+          published: publishedNotices,
+          total: draftNotices + scheduledNotices + publishedNotices
+        },
         collegeNotices: {
           draft: draftNotices,
           scheduled: scheduledNotices,

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { api } from '../../services/api';
+import { api, unpackList } from '../../services/api';
 import { Subject, Department } from '../../types';
 import { DataTable, Column } from '../../components/data/DataTable';
 import { SearchFilterBar } from '../../components/data/SearchFilterBar';
@@ -15,17 +15,17 @@ export const SubjectsView: React.FC = () => {
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterDept, setFilterDept] = useState('ALL');
+  const [filterDept, setFilterDept] = useState<string>('ALL');
   const [isLoading, setIsLoading] = useState(true);
 
-  // Modal
+  // Modals
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
-  const [deptId, setDeptId] = useState<number>(1);
-  const [year, setYear] = useState<number>(3);
-  const [semester, setSemester] = useState<number>(5);
+  const [deptId, setDeptId] = useState<string | number>(1);
+  const [year, setYear] = useState<number>(1);
+  const [semester, setSemester] = useState<number>(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Delete
@@ -34,13 +34,16 @@ export const SubjectsView: React.FC = () => {
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const [subjRes, deptRes] = await Promise.all([
-        api.get<Subject[]>('/subjects'),
-        api.get<Department[]>('/departments'),
+      const [subjRes, deptRes]: any = await Promise.all([
+        api.get('/subjects').catch(() => api.get('/admin/subjects')),
+        api.get('/departments').catch(() => api.get('/admin/departments')),
       ]);
-      setSubjects(Array.isArray(subjRes) ? subjRes : []);
-      setDepartments(Array.isArray(deptRes) ? deptRes : []);
-      if (Array.isArray(deptRes) && deptRes.length > 0) setDeptId(deptRes[0].id);
+      const subjectsList = unpackList<Subject>(subjRes, 'subjects');
+      const departmentsList = unpackList<Department>(deptRes, 'departments');
+
+      setSubjects(subjectsList);
+      setDepartments(departmentsList);
+      if (departmentsList.length > 0 && !deptId) setDeptId(departmentsList[0].id);
     } catch (err: any) {
       error('Failed to load', err.message);
     } finally {

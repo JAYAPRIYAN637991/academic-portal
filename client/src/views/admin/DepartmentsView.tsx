@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { api } from '../../services/api';
+import { api, unpackList } from '../../services/api';
 import { Department } from '../../types';
 import { DataTable, Column } from '../../components/data/DataTable';
 import { SearchFilterBar } from '../../components/data/SearchFilterBar';
@@ -29,8 +29,9 @@ export const DepartmentsView: React.FC = () => {
   const fetchDepts = async () => {
     setIsLoading(true);
     try {
-      const res = await api.get<Department[]>('/departments');
-      setDepartments(Array.isArray(res) ? res : []);
+      const res: any = await api.get('/departments').catch(() => api.get('/admin/departments'));
+      const list = unpackList<Department>(res, 'departments');
+      setDepartments(list);
     } catch (err: any) {
       error('Failed to load', err.message);
     } finally {
